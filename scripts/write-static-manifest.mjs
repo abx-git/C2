@@ -1,4 +1,5 @@
 import { copyFile, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 
 async function walk(dir, base, out) {
@@ -37,8 +38,37 @@ function relativizeHtml(content, prefix) {
 
 async function writeCatalogJs(outDir) {
   const dataDir = join(outDir, "data");
+  await mkdir(dataDir, { recursive: true });
+  const stubs = {
+    "tags.json": { version: 1, tags: [{ id: "publish", name: "publish", slug: "publish" }] },
+    "photos.json": { version: 1, photos: [] },
+    "texts.json": { version: 1, texts: [], items: [] },
+    "site.json": {
+      version: 1,
+      title: "Photos",
+      theme: "gallery-v1",
+      contactEmail: "",
+      layout: {
+        gap: 8,
+        columns: "mix",
+        rowMinHeight: 160,
+        rowMaxHeight: 440,
+        showPageTitle: true,
+        background: "white",
+      },
+      pages: [
+        { id: "work", type: "work", title: "Work", visibility: "public" },
+        { id: "home", type: "gallery", title: "Alle", visibility: "public", filter: { tags: [] } },
+        { id: "contact", type: "contact", title: "Contact", visibility: "public" },
+      ],
+    },
+  };
+  for (const [name, body] of Object.entries(stubs)) {
+    const path = join(dataDir, name);
+    if (!existsSync(path)) await writeFile(path, `${JSON.stringify(body, null, 2)}\n`);
+  }
   try {
-        const tags = JSON.parse(await readFile(join(dataDir, "tags.json"), "utf8"));
+    const tags = JSON.parse(await readFile(join(dataDir, "tags.json"), "utf8"));
     const photos = JSON.parse(await readFile(join(dataDir, "photos.json"), "utf8"));
     const site = JSON.parse(await readFile(join(dataDir, "site.json"), "utf8"));
     let texts = { version: 1, texts: [], items: [] };
@@ -47,7 +77,17 @@ async function writeCatalogJs(outDir) {
     } catch {
       /* optional */
     }
-    await writeFile(join(dataDir, "catalog.js"), `window.__C2_CATALOG__=${JSON.stringify({ tags, photos, site, texts })};\n`);
+    const bootstrap = `window.__C2_CATALOG__=${JSON.stringify({ tags, photos, site, texts })};`;
+    await writeFile(join(dataDir, "catalog.js"), `${bootstrap}\n`);
+    const indexPath = join(outDir, "index.html");
+    if (existsSync(indexPath)) {
+      let html = await readFile(indexPath, "utf8");
+      const tag = `<script id="c2-catalog">${bootstrap.replace(/</g, "\\u003c")}</script>`;
+      html = html.replace(/<script id="c2-catalog">[\s\S]*?<\/script>/, "");
+      if (html.includes("<head>")) html = html.replace("<head>", `<head>${tag}`);
+      else html = `${tag}${html}`;
+      await writeFile(indexPath, html);
+    }
   } catch {
     /* optional during first builds */
   }

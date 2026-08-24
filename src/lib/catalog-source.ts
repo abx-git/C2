@@ -26,6 +26,7 @@ function readEmbeddedCatalog(): Catalog | null {
 
 async function fetchJson(url: string): Promise<unknown> {
   const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
+  if (res.status === 404) return {};
   if (!res.ok) throw new Error(`${url} (${res.status})`);
   return res.json();
 }
@@ -35,7 +36,7 @@ async function loadCatalogFromJson(prefix: string): Promise<Catalog> {
     fetchJson(`${prefix}/data/tags.json`),
     fetchJson(`${prefix}/data/photos.json`),
     fetchJson(`${prefix}/data/site.json`),
-    fetchJson(`${prefix}/data/texts.json`).catch(() => ({})),
+    fetchJson(`${prefix}/data/texts.json`),
   ]);
   return parseCatalog(tags, photos, site, texts);
 }

@@ -52,12 +52,12 @@ export function HttpGallery() {
         <main className="g-essay">
           <p className="g-empty">
             {error ?? "Noch keine veröffentlichten Bilder."}
-            {typeof window !== "undefined" && window.location.protocol === "file:" ? null : (
+            {!error && typeof window !== "undefined" && window.location.protocol !== "file:" ? (
               <>
                 {" "}
                 <a href="./edit/">Editor</a>
               </>
-            )}
+            ) : null}
           </p>
         </main>
       </div>
