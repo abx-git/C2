@@ -61,10 +61,12 @@ export function PhotoLibrary() {
   const canWrite = useEditorStore((s) => s.canWrite);
   const [draggingFiles, setDraggingFiles] = useState(false);
   const [dropTargetId, setDropTargetId] = useState<string | null>(null);
+  const [dropAfter, setDropAfter] = useState(false);
   const [filter, setFilter] = useState<Record<string, FilterMode>>({});
   const inputRef = useRef<HTMLInputElement>(null);
   const reordering = useRef(false);
   const didDrag = useRef(false);
+  const fileInsertBeforeRef = useRef<string | null>(null);
 
   const cycleTag = (id: string) => {
     setFilter((current) => {
@@ -102,21 +104,33 @@ export function PhotoLibrary() {
   const emptyLibrary = photos.length === 0 && textCount === 0;
 
   const onFiles = useCallback(
-    (list: FileList | File[] | null) => {
+    (list: FileList | File[] | null, beforeId?: string | null) => {
       if (!list) return;
       const files = Array.from(list);
       if (!files.length) return;
-      void importFiles(files);
+      void importFiles(files, beforeId);
     },
     [importFiles],
   );
 
-  const acceptFileDrop = (event: React.DragEvent) => {
+  const feedIds = useMemo(() => catalogFeed(catalog).map(itemId), [catalog]);
+
+  const beforeIdForTile = (id: string, after: boolean) => {
+    if (!after) return id;
+    const index = feedIds.indexOf(id);
+    if (index < 0 || index >= feedIds.length - 1) return null;
+    return feedIds[index + 1]!;
+  };
+
+  const acceptFileDrop = (event: React.DragEvent, beforeId?: string | null) => {
     event.preventDefault();
     event.stopPropagation();
+    const at = beforeId !== undefined ? beforeId : fileInsertBeforeRef.current;
     setDraggingFiles(false);
     setDropTargetId(null);
-    onFiles(filesFromDrop(event));
+    setDropAfter(false);
+    fileInsertBeforeRef.current = null;
+    onFiles(filesFromDrop(event), at);
   };
 
   const selectItem = (item: FeedItem, event: React.MouseEvent) => {
@@ -156,6 +170,9 @@ export function PhotoLibrary() {
         const next = event.relatedTarget as Node | null;
         if (next && event.currentTarget.contains(next)) return;
         setDraggingFiles(false);
+        setDropTargetId(null);
+        setDropAfter(false);
+        fileInsertBeforeRef.current = null;
       }}
       onDrop={(event) => {
         if (!isFileDrag(event)) return;
@@ -291,17 +308,32 @@ export function PhotoLibrary() {
                   event.dataTransfer.effectAllowed = "move";
                 }}
                 onDragOver={(event) => {
-                  if (isFileDrag(event)) return;
+                  if (isFileDrag(event)) {
+                    event.preventDefault();
+                    event.dataTransfer.dropEffect = "copy";
+                    const rect = event.currentTarget.getBoundingClientRect();
+                    const after = event.clientX > rect.left + rect.width / 2;
+                    fileInsertBeforeRef.current = beforeIdForTile(id, after);
+                    if (dropTargetId !== id) setDropTargetId(id);
+                    if (dropAfter !== after) setDropAfter(after);
+                    return;
+                  }
                   if (!reordering.current) return;
                   event.preventDefault();
                   event.dataTransfer.dropEffect = "move";
                   if (dropTargetId !== id) setDropTargetId(id);
                 }}
-                onDragLeave={() => {
+                onDragLeave={(event) => {
+                  if (isFileDrag(event)) return;
                   if (dropTargetId === id) setDropTargetId(null);
                 }}
                 onDrop={(event) => {
-                  if (isFileDrag(event)) return;
+                  if (isFileDrag(event)) {
+                    const rect = event.currentTarget.getBoundingClientRect();
+                    const after = event.clientX > rect.left + rect.width / 2;
+                    acceptFileDrop(event, beforeIdForTile(id, after));
+                    return;
+                  }
                   event.preventDefault();
                   event.stopPropagation();
                   const fromId = event.dataTransfer.getData("text/plain");
@@ -323,10 +355,17 @@ export function PhotoLibrary() {
                   if (didDrag.current || item.type !== "photo") return;
                   openPreview(item.photo.id);
                 }}
-                className={`cursor-grab overflow-hidden rounded-lg border bg-[var(--edit-panel)] text-left active:cursor-grabbing ${
+                className={`relative cursor-grab overflow-hidden rounded-lg border bg-[var(--edit-panel)] text-left active:cursor-grabbing ${
                   selected ? "border-[var(--edit-ink)] ring-1 ring-[var(--edit-ink)]" : "border-transparent"
                 } ${dropTargetId === id ? "ring-2 ring-[var(--edit-ink)]" : ""}`}
               >
+                {draggingFiles && dropTargetId === id ? (
+                  <span
+                    className={`pointer-events-none absolute top-1 bottom-1 z-10 w-0.5 bg-[var(--edit-ink)] ${
+                      dropAfter ? "right-0" : "left-0"
+                    }`}
+                  />
+                ) : null}
                 {item.type === "photo" ? (
                   <>
                     <div className="aspect-square bg-[#ddd8d0]">
@@ -379,15 +418,10 @@ export function PhotoLibrary() {
         </div>
       ) : null}
       {draggingFiles ? (
-        <div
-          className="absolute inset-0 z-10 flex items-center justify-center rounded-xl border-2 border-dashed border-[var(--edit-ink)] bg-[var(--edit-panel)]/80 text-sm font-medium"
-          onDragOver={(event) => {
-            event.preventDefault();
-            event.dataTransfer.dropEffect = "copy";
-          }}
-          onDrop={acceptFileDrop}
-        >
-          Bilder ablegen
+        <div className="pointer-events-none absolute inset-x-0 top-0 z-10 flex justify-center pt-1">
+          <span className="rounded-full bg-[var(--edit-ink)] px-3 py-1 text-xs text-[#f7f5f1]">
+            Ablegen zum Einfügen
+          </span>
         </div>
       ) : null}
     </div>

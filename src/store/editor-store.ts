@@ -69,7 +69,7 @@ type EditorState = {
   connectWorkspace: () => Promise<void>;
   reauthorizeWorkspace: () => Promise<void>;
   disconnect: () => void;
-  importFiles: (files: File[]) => Promise<void>;
+  importFiles: (files: File[], beforeId?: string | null) => Promise<void>;
   selectPhoto: (id: string | null) => void;
   togglePhotoSelected: (id: string) => void;
   selectPhotos: (ids: string[], focusId?: string) => void;
@@ -435,7 +435,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     });
   },
 
-  importFiles: async (files) => {
+  importFiles: async (files, beforeId) => {
     const handle = workspaceHandle;
     const state = get();
     if (!handle || !state.canWrite) {
@@ -447,6 +447,13 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       set({ error: "Keine Bilddateien gefunden." });
       return;
     }
+
+    const neighbor =
+      (beforeId
+        ? state.catalog.photos.photos.find((photo) => photo.id === beforeId) ??
+          state.catalog.texts?.texts.find((text) => text.id === beforeId)
+        : null) ?? undefined;
+    const inheritedTags = neighbor?.tags.slice() ?? [];
 
     const photos = [...state.catalog.photos.photos];
     const newRefs: FeedRef[] = [];
@@ -475,7 +482,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
           title: "",
           caption: "",
           takenAt: exif?.takenAt ?? new Date(file.lastModified).toISOString(),
-          tags: [],
+          tags: inheritedTags.slice(),
           files: { original: originalPath, display: displayPath, thumb: thumbPath },
           width: prepared.width,
           height: prepared.height,
@@ -494,13 +501,19 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
     const current = get().catalog;
     const textsFile = current.texts ?? emptyTexts();
+    let items = normalizeItems(photos, textsFile.texts, textsFile.items).filter(
+      (ref) => !newRefs.some((item) => item.type === ref.type && item.id === ref.id),
+    );
+    const at = beforeId ? items.findIndex((ref) => ref.id === beforeId) : -1;
+    if (at >= 0) items.splice(at, 0, ...newRefs);
+    else items.push(...newRefs);
     const catalog: Catalog = {
       ...current,
       photos: { version: 1, photos },
       texts: {
         version: 1,
         texts: textsFile.texts,
-        items: normalizeItems(photos, textsFile.texts, [...textsFile.items, ...newRefs]),
+        items,
       },
     };
     try {
