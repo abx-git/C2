@@ -158,6 +158,9 @@ export function galleryThemeStyle(id: string | undefined): Record<string, string
   };
 }
 
+export const SLIDESHOW_INTERVAL_MIN = 2;
+export const SLIDESHOW_INTERVAL_MAX = 30;
+
 export type LayoutConfig = {
   /** Abstand zwischen Bildern, Pixel */
   gap: number;
@@ -171,6 +174,8 @@ export type LayoutConfig = {
   showPageTitle: boolean;
   /** Hintergrund der Galerie */
   background: GalleryBackgroundId;
+  /** Diashow: Sekunden pro Bild */
+  slideshowInterval: number;
 };
 
 export const DEFAULT_LAYOUT: LayoutConfig = {
@@ -180,7 +185,12 @@ export const DEFAULT_LAYOUT: LayoutConfig = {
   rowMaxHeight: 440,
   showPageTitle: true,
   background: "white",
+  slideshowInterval: 5,
 };
+
+export function clampSlideshowInterval(value: number): number {
+  return Math.min(SLIDESHOW_INTERVAL_MAX, Math.max(SLIDESHOW_INTERVAL_MIN, Math.round(value)));
+}
 
 export type SiteFile = {
   version: typeof CATALOG_VERSION;
@@ -360,6 +370,9 @@ export function parseLayout(raw: unknown): LayoutConfig {
   if (typeof raw.showPageTitle === "boolean") base.showPageTitle = raw.showPageTitle;
   if (typeof raw.background === "string" && GALLERY_BACKGROUNDS.some((item) => item.id === raw.background)) {
     base.background = raw.background as GalleryBackgroundId;
+  }
+  if (typeof raw.slideshowInterval === "number" && Number.isFinite(raw.slideshowInterval)) {
+    base.slideshowInterval = clampSlideshowInterval(raw.slideshowInterval);
   }
   return base;
 }

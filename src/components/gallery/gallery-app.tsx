@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   DEFAULT_LAYOUT,
   catalogFeed,
+  clampSlideshowInterval,
   galleryThemeStyle,
   filterPhotos,
   flattenGalleryPages,
@@ -116,6 +117,7 @@ export function GalleryApp({ catalog, resolveUrl, className }: GalleryAppProps) 
   const leafPages = useMemo(() => flattenLeafPages(catalog.site.pages), [catalog.site.pages]);
   const [pageId, setPageId] = useState(leafPages[0]?.id ?? "work");
   const [lightbox, setLightbox] = useState<number | null>(null);
+  const [slideshow, setSlideshow] = useState(false);
   const stageRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
 
@@ -179,6 +181,7 @@ export function GalleryApp({ catalog, resolveUrl, className }: GalleryAppProps) 
 
   const selectPage = (id: string) => {
     setLightbox(null);
+    setSlideshow(false);
     setPageId(id);
     if (window.location.hash !== `#${id}`) {
       window.history.replaceState(null, "", `#${id}`);
@@ -187,10 +190,25 @@ export function GalleryApp({ catalog, resolveUrl, className }: GalleryAppProps) 
 
   const openPhoto = (photo: Photo) => {
     const index = photos.findIndex((p) => p.id === photo.id);
-    if (index >= 0) setLightbox(index);
+    if (index >= 0) {
+      setSlideshow(false);
+      setLightbox(index);
+    }
+  };
+
+  const startSlideshow = () => {
+    if (!photos.length) return;
+    setSlideshow(true);
+    setLightbox(0);
+  };
+
+  const closeLightbox = () => {
+    setSlideshow(false);
+    setLightbox(null);
   };
 
   const heading = pageTitle(page, layout.showPageTitle);
+  const intervalMs = clampSlideshowInterval(layout.slideshowInterval ?? DEFAULT_LAYOUT.slideshowInterval) * 1000;
 
   return (
     <div
@@ -198,7 +216,29 @@ export function GalleryApp({ catalog, resolveUrl, className }: GalleryAppProps) 
       style={galleryThemeStyle(layout.background) as React.CSSProperties}
     >
       <div className="g-name">{catalog.site.title}</div>
-      {heading ? <h1 className="g-essay-title">{heading}</h1> : <div className="g-essay-title" aria-hidden="true" />}
+      <div className="g-essay-head">
+        {heading ? <h1 className="g-essay-title">{heading}</h1> : <div className="g-essay-title" aria-hidden="true" />}
+        {gallery && photos.length > 0 ? (
+          <button
+            type="button"
+            className="g-slideshow"
+            onClick={startSlideshow}
+            title="Diashow starten"
+            aria-label="Diashow starten"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path
+                d="M8 6.2v11.6L18.5 12z"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </button>
+        ) : null}
+      </div>
 
       <aside className="g-rail">
         <nav aria-label="Archiv">
@@ -270,8 +310,10 @@ export function GalleryApp({ catalog, resolveUrl, className }: GalleryAppProps) 
           photos={photos}
           index={lightbox}
           resolveUrl={(photo) => resolveUrl(photo, "display")}
-          onClose={() => setLightbox(null)}
+          onClose={closeLightbox}
           onIndex={setLightbox}
+          playing={slideshow}
+          intervalMs={intervalMs}
         />
       ) : null}
     </div>

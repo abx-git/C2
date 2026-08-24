@@ -1,8 +1,10 @@
 import { toPublicCatalog, toPublicPhotos, type Catalog } from "./catalog";
 import { catalogBootstrapScript, injectCatalogIntoHtml } from "./catalog-source";
+import { rewriteAssetPaths } from "./deploy-paths";
 import {
   copyDirectoryHandle,
   copyFileBetween,
+  listRelativeFiles,
   readTextFile,
   writeBinaryFile,
   writeJsonFile,
@@ -34,6 +36,17 @@ async function loadManifest(url: string): Promise<Manifest | null> {
   const res = await fetch(url);
   if (!res.ok) return null;
   return (await res.json()) as Manifest;
+}
+
+async function rewriteCopiedAppForFileOpen(dest: FileSystemDirectoryHandle): Promise<void> {
+  const files = await listRelativeFiles(dest, "", new Set(["data", "images"]));
+  for (const path of files) {
+    if (!/\.(html|js|css|txt)$/.test(path)) continue;
+    const text = await readTextFile(dest, path);
+    if (text == null) continue;
+    const next = rewriteAssetPaths(path, text);
+    if (next !== text) await writeTextFile(dest, path, next);
+  }
 }
 
 async function copyAppFromOrigin(dest: FileSystemDirectoryHandle, originBase: string): Promise<boolean> {
@@ -93,6 +106,7 @@ export async function writeDeployFolder(opts: {
   if (indexHtml) {
     await writeTextFile(opts.dest, "index.html", injectCatalogIntoHtml(indexHtml, bootstrap));
   }
+  await rewriteCopiedAppForFileOpen(opts.dest);
 
   for (const photo of publicCatalog.photos.photos) {
     const files = publicPhotos.photos.find((item) => item.id === photo.id)?.files ?? photo.files;

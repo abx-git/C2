@@ -164,6 +164,24 @@ export async function copyFileBetween(
   await writeBinaryFile(destRoot, destPath, file);
 }
 
+export async function listRelativeFiles(
+  root: FileSystemDirectoryHandle,
+  prefix = "",
+  skipTop: Set<string> = new Set(),
+): Promise<string[]> {
+  const out: string[] = [];
+  for await (const [name, handle] of root.entries()) {
+    if (!prefix && skipTop.has(name)) continue;
+    const path = prefix ? `${prefix}/${name}` : name;
+    if (handle.kind === "directory") {
+      out.push(...(await listRelativeFiles(handle as FileSystemDirectoryHandle, path)));
+    } else {
+      out.push(path);
+    }
+  }
+  return out;
+}
+
 export async function copyDirectoryHandle(
   source: FileSystemDirectoryHandle,
   dest: FileSystemDirectoryHandle,

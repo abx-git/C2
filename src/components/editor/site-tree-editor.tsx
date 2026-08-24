@@ -4,6 +4,8 @@ import { newId } from "@/lib/id";
 import {
   DEFAULT_LAYOUT,
   GALLERY_BACKGROUNDS,
+  SLIDESHOW_INTERVAL_MAX,
+  SLIDESHOW_INTERVAL_MIN,
   isPublishTag,
   pageVisibility,
   type GalleryPage,
@@ -164,6 +166,19 @@ function LayoutFields({
             className="edit-field mt-1"
             value={layout.rowMaxHeight}
             onChange={(event) => set({ rowMaxHeight: Number(event.target.value) || 120 })}
+          />
+        </label>
+        <label className="block text-xs text-[var(--edit-muted)]">
+          Diashow-Intervall (s)
+          <input
+            type="number"
+            min={SLIDESHOW_INTERVAL_MIN}
+            max={SLIDESHOW_INTERVAL_MAX}
+            className="edit-field mt-1"
+            value={layout.slideshowInterval ?? DEFAULT_LAYOUT.slideshowInterval}
+            onChange={(event) =>
+              set({ slideshowInterval: Number(event.target.value) || DEFAULT_LAYOUT.slideshowInterval })
+            }
           />
         </label>
       </div>

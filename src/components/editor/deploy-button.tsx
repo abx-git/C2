@@ -42,7 +42,7 @@ export function DeployButton() {
               originBase,
             });
             const appNote = result.copiedApp
-              ? "Eigenständiger Ordner: App, JSON und veröffentlichte Bilder."
+              ? "Eigenständiger Ordner: index.html im Finder öffnen, JSON und veröffentlichte Bilder."
               : "Nur JSON und Bilder geschrieben. Einmal „npm run build:static“ ausführen, dann erneut deployen — erst dann ist der Ordner allein auslieferbar.";
             setInfo(`${appNote} ${result.photoCount} Bild${result.photoCount === 1 ? "" : "er"}.`);
           } catch (err) {

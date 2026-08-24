@@ -9,9 +9,19 @@ type LightboxProps = {
   resolveUrl: (photo: Photo, kind: "display") => string;
   onClose: () => void;
   onIndex: (index: number) => void;
+  playing?: boolean;
+  intervalMs?: number;
 };
 
-export function Lightbox({ photos, index, resolveUrl, onClose, onIndex }: LightboxProps) {
+export function Lightbox({
+  photos,
+  index,
+  resolveUrl,
+  onClose,
+  onIndex,
+  playing = false,
+  intervalMs = 5000,
+}: LightboxProps) {
   const photo = photos[index];
 
   const go = useCallback(
@@ -21,6 +31,12 @@ export function Lightbox({ photos, index, resolveUrl, onClose, onIndex }: Lightb
     },
     [index, onIndex, photos.length],
   );
+
+  useEffect(() => {
+    if (!playing || photos.length < 2) return;
+    const timer = window.setTimeout(() => go(1), Math.max(1, intervalMs));
+    return () => window.clearTimeout(timer);
+  }, [playing, intervalMs, index, go, photos.length]);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -44,7 +60,7 @@ export function Lightbox({ photos, index, resolveUrl, onClose, onIndex }: Lightb
   const label = title || "Bild";
 
   return (
-    <div className="g-lightbox" role="dialog" aria-modal="true" aria-label={label}>
+    <div className="g-lightbox" role="dialog" aria-modal="true" aria-label={playing ? `Diashow: ${label}` : label}>
       <button type="button" className="g-lightbox-back" onClick={onClose} aria-label="Zurück zur Übersicht">
         <svg viewBox="0 0 24 24" aria-hidden="true">
           <path
