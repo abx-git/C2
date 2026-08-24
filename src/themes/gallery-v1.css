@@ -286,7 +286,6 @@
   width: 100%;
   max-width: 100%;
   box-sizing: border-box;
-  margin-bottom: 8px;
   overflow: hidden;
 }
 
@@ -496,10 +495,6 @@
   .theme-gallery-v1 .g-essay {
     grid-column: 1 / -1;
     padding: 1rem 0.8rem 0;
-  }
-
-  .theme-gallery-v1 .g-row {
-    margin-bottom: 6px;
   }
 
   .theme-gallery-v1 .g-work {

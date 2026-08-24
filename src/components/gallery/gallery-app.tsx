@@ -272,7 +272,11 @@ export function GalleryApp({ catalog, resolveUrl, className }: GalleryAppProps) 
                     : null}
                 </article>
               ) : (
-                <div key={`row-${blockIndex}`} className="g-row" style={{ height: block.height, gap: layout.gap }}>
+                <div
+                  key={`row-${blockIndex}`}
+                  className="g-row"
+                  style={{ height: block.height, gap: layout.gap, marginBottom: layout.gap }}
+                >
                   {block.photos.map((photo, slot) => {
                     const label = photo.title || photo.originalName;
                     const caption = photo.caption.trim();
