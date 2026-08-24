@@ -1,0 +1,59 @@
+# Statische App → GitHub Pages (https://<user>.github.io/<repo>/)
+#
+# Source: GitHub Actions. Katalog und Bilder bleiben lokal, nicht im Repo.
+name: Deploy GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      BASE_PATH: ${{ vars.NEXT_PUBLIC_BASE_PATH || format('/{0}', github.event.repository.name) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - run: npm ci
+
+      - name: Static export
+        run: npm run build:static
+        env:
+          NEXT_PUBLIC_BASE_PATH: ${{ env.BASE_PATH }}
+
+      - name: Verify build output
+        run: |
+          set -euo pipefail
+          test -f out/.nojekyll || (echo "Fehlt: out/.nojekyll" && exit 1)
+          test -f out/index.html || (echo "Fehlt: out/index.html" && exit 1)
+          echo "Build OK — basePath=${BASE_PATH}"
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: out
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/deploy-pages@v4
+        id: deployment
