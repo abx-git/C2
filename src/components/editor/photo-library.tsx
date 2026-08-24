@@ -27,6 +27,19 @@ function isFileDrag(event: React.DragEvent) {
   return Array.from(event.dataTransfer.types).includes("Files");
 }
 
+function itemSearchText(item: FeedItem): string {
+  if (item.type === "photo") {
+    return [item.photo.title, item.photo.caption, item.photo.originalName].join("\n");
+  }
+  return [item.text.title, item.text.body].join("\n");
+}
+
+function matchesQuery(item: FeedItem, query: string): boolean {
+  const needle = query.trim().toLocaleLowerCase("de");
+  if (!needle) return true;
+  return itemSearchText(item).toLocaleLowerCase("de").includes(needle);
+}
+
 function filesFromDrop(event: React.DragEvent): File[] {
   const listed = Array.from(event.dataTransfer.files ?? []);
   if (listed.length) return listed;
@@ -63,6 +76,7 @@ export function PhotoLibrary() {
   const [dropTargetId, setDropTargetId] = useState<string | null>(null);
   const [dropAfter, setDropAfter] = useState(false);
   const [filter, setFilter] = useState<Record<string, FilterMode>>({});
+  const [query, setQuery] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
   const reordering = useRef(false);
   const didDrag = useRef(false);
@@ -92,12 +106,15 @@ export function PhotoLibrary() {
         (item) => !exclude.some((id) => hasCatalogTag(itemEntity(item), id, tags)),
       );
     }
+    if (query.trim()) items = items.filter((item) => matchesQuery(item, query));
     return items;
-  }, [filter, catalog, tags]);
+  }, [filter, query, catalog, tags]);
 
   const visibleIds = visible.map(itemId);
   const visiblePhotos = visible.flatMap((item) => (item.type === "photo" ? [item.photo] : []));
-  const filterActive = Object.keys(filter).length > 0;
+  const tagFilterActive = Object.keys(filter).length > 0;
+  const queryActive = query.trim().length > 0;
+  const filterActive = tagFilterActive || queryActive;
   const previewPhotos = visiblePhotos.length ? visiblePhotos : photos;
   const previewAt = previewPhotoId ? previewPhotos.findIndex((photo) => photo.id === previewPhotoId) : -1;
   const textCount = catalog.texts?.texts.length ?? 0;
@@ -230,6 +247,14 @@ export function PhotoLibrary() {
         </div>
         <div className="flex flex-wrap items-center gap-1.5">
           <span className="mr-1 text-xs text-[var(--edit-muted)]">Filter:</span>
+          <input
+            type="search"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Titel oder Text"
+            aria-label="Nach Titel oder Text suchen"
+            className="edit-field w-44 max-w-full py-0.5 text-xs"
+          />
           <button
             type="button"
             className={`rounded-full border px-2 py-0.5 text-xs ${
@@ -237,7 +262,10 @@ export function PhotoLibrary() {
                 ? "border-[var(--edit-ink)] bg-[var(--edit-ink)] text-[#f7f5f1]"
                 : "border-[var(--edit-line)] bg-[var(--edit-panel)]"
             }`}
-            onClick={() => setFilter({})}
+            onClick={() => {
+              setFilter({});
+              setQuery("");
+            }}
           >
             Alle
           </button>
@@ -289,7 +317,7 @@ export function PhotoLibrary() {
         <div className="min-h-0 flex-1 overflow-auto">
         {visible.length === 0 ? (
           <p className="rounded-xl border border-[var(--edit-line)] bg-[var(--edit-panel)] p-6 text-sm text-[var(--edit-muted)]">
-            Keine Einträge mit diesem Tag.
+            Keine Einträge zu diesem Filter.
           </p>
         ) : (
         <div className="grid select-none grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">

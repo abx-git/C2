@@ -235,6 +235,7 @@ export function GalleryApp({ catalog, resolveUrl, className }: GalleryAppProps) 
                 <div key={`row-${blockIndex}`} className="g-row" style={{ height: block.height, gap: layout.gap }}>
                   {block.photos.map((photo, slot) => {
                     const label = photo.title || photo.originalName;
+                    const caption = photo.caption.trim();
                     return (
                       <button
                         key={`${blockIndex}-${slot}-${photo.id}`}
@@ -249,10 +250,11 @@ export function GalleryApp({ catalog, resolveUrl, className }: GalleryAppProps) 
                           event.currentTarget.blur();
                           openPhoto(photo);
                         }}
-                        aria-label={label}
+                        aria-label={caption ? `${label}. ${caption}` : label}
                       >
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img src={resolveUrl(photo, "display")} alt={label} />
+                        {caption ? <span className="g-shot-caption">{caption}</span> : null}
                       </button>
                     );
                   })}
