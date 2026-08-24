@@ -23,6 +23,22 @@ function itemEntity(item: FeedItem): { tags: string[] } {
   return item.type === "photo" ? item.photo : item.text;
 }
 
+function isFileDrag(event: React.DragEvent) {
+  return Array.from(event.dataTransfer.types).includes("Files");
+}
+
+function filesFromDrop(event: React.DragEvent): File[] {
+  const listed = Array.from(event.dataTransfer.files ?? []);
+  if (listed.length) return listed;
+  const fromItems: File[] = [];
+  for (const item of Array.from(event.dataTransfer.items ?? [])) {
+    if (item.kind !== "file") continue;
+    const file = item.getAsFile();
+    if (file) fromItems.push(file);
+  }
+  return fromItems;
+}
+
 export function PhotoLibrary() {
   const catalog = useEditorStore((s) => s.catalog);
   const photos = catalog.photos.photos;
@@ -89,10 +105,19 @@ export function PhotoLibrary() {
     (list: FileList | File[] | null) => {
       if (!list) return;
       const files = Array.from(list);
+      if (!files.length) return;
       void importFiles(files);
     },
     [importFiles],
   );
+
+  const acceptFileDrop = (event: React.DragEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setDraggingFiles(false);
+    setDropTargetId(null);
+    onFiles(filesFromDrop(event));
+  };
 
   const selectItem = (item: FeedItem, event: React.MouseEvent) => {
     const id = itemId(item);
@@ -118,20 +143,23 @@ export function PhotoLibrary() {
       className="relative flex min-h-0 flex-1 flex-col"
       onDragEnter={(event) => {
         event.preventDefault();
-        if (reordering.current) return;
-        if (Array.from(event.dataTransfer.types).includes("Files")) setDraggingFiles(true);
+        if (reordering.current || !isFileDrag(event)) return;
+        setDraggingFiles(true);
       }}
       onDragOver={(event) => {
+        if (reordering.current || !isFileDrag(event)) return;
         event.preventDefault();
-        if (reordering.current) return;
-        if (Array.from(event.dataTransfer.types).includes("Files")) setDraggingFiles(true);
+        event.dataTransfer.dropEffect = "copy";
+        setDraggingFiles(true);
       }}
-      onDragLeave={() => setDraggingFiles(false)}
-      onDrop={(event) => {
-        event.preventDefault();
+      onDragLeave={(event) => {
+        const next = event.relatedTarget as Node | null;
+        if (next && event.currentTarget.contains(next)) return;
         setDraggingFiles(false);
-        if (reordering.current) return;
-        onFiles(event.dataTransfer.files);
+      }}
+      onDrop={(event) => {
+        if (!isFileDrag(event)) return;
+        acceptFileDrop(event);
       }}
     >
       <div className="mb-3 shrink-0 space-y-2">
@@ -263,6 +291,7 @@ export function PhotoLibrary() {
                   event.dataTransfer.effectAllowed = "move";
                 }}
                 onDragOver={(event) => {
+                  if (isFileDrag(event)) return;
                   if (!reordering.current) return;
                   event.preventDefault();
                   event.dataTransfer.dropEffect = "move";
@@ -272,6 +301,7 @@ export function PhotoLibrary() {
                   if (dropTargetId === id) setDropTargetId(null);
                 }}
                 onDrop={(event) => {
+                  if (isFileDrag(event)) return;
                   event.preventDefault();
                   event.stopPropagation();
                   const fromId = event.dataTransfer.getData("text/plain");
@@ -349,7 +379,14 @@ export function PhotoLibrary() {
         </div>
       ) : null}
       {draggingFiles ? (
-        <div className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-xl border-2 border-dashed border-[var(--edit-ink)] bg-[var(--edit-panel)]/80 text-sm font-medium">
+        <div
+          className="absolute inset-0 z-10 flex items-center justify-center rounded-xl border-2 border-dashed border-[var(--edit-ink)] bg-[var(--edit-panel)]/80 text-sm font-medium"
+          onDragOver={(event) => {
+            event.preventDefault();
+            event.dataTransfer.dropEffect = "copy";
+          }}
+          onDrop={acceptFileDrop}
+        >
           Bilder ablegen
         </div>
       ) : null}

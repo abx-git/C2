@@ -3,6 +3,7 @@ import { BRAVE_FS_HELP, isBrave } from "@/lib/browser";
 import {
   createTag,
   emptyCatalog,
+  emptyTexts,
   ensurePublishTag,
   isPublishTag,
   parseCatalog,
@@ -492,30 +493,39 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     }
 
     const current = get().catalog;
+    const textsFile = current.texts ?? emptyTexts();
     const catalog: Catalog = {
       ...current,
       photos: { version: 1, photos },
       texts: {
         version: 1,
-        texts: current.texts.texts,
-        items: normalizeItems(photos, current.texts.texts, [...current.texts.items, ...newRefs]),
+        texts: textsFile.texts,
+        items: normalizeItems(photos, textsFile.texts, [...textsFile.items, ...newRefs]),
       },
     };
-    await writeJsonFile(handle, "data/photos.json", catalog.photos);
-    await writeJsonFile(handle, "data/texts.json", catalog.texts);
-    set({
-      catalog,
-      selectedPhotoId: lastId,
-      importProgress: null,
-      dirty: false,
-      thumbUrls,
-      displayUrls,
-      tab: "photos",
-      message: errors.length
-        ? `${images.length - errors.length} importiert, ${errors.length} fehlgeschlagen.`
-        : `${images.length} Bild${images.length === 1 ? "" : "er"} importiert.`,
-      error: errors.length ? errors.slice(0, 4).join("\n") : null,
-    });
+    try {
+      await writeJsonFile(handle, "data/photos.json", catalog.photos);
+      await writeJsonFile(handle, "data/texts.json", catalog.texts);
+      set({
+        catalog,
+        selectedPhotoId: lastId,
+        selectedPhotoIds: lastId ? [lastId] : [],
+        importProgress: null,
+        dirty: false,
+        thumbUrls,
+        displayUrls,
+        tab: "photos",
+        message: errors.length
+          ? `${images.length - errors.length} importiert, ${errors.length} fehlgeschlagen.`
+          : `${images.length} Bild${images.length === 1 ? "" : "er"} importiert.`,
+        error: errors.length ? errors.slice(0, 4).join("\n") : null,
+      });
+    } catch (err) {
+      set({
+        importProgress: null,
+        error: err instanceof Error ? err.message : "Import konnte nicht gespeichert werden.",
+      });
+    }
   },
 
   selectPhoto: (id) => set({ selectedPhotoId: id, selectedPhotoIds: id ? [id] : [] }),
