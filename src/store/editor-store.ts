@@ -89,6 +89,7 @@ type EditorState = {
   reorderPhotos: (fromId: string, toId: string, visibleIds: string[]) => void;
   deletePhoto: (id: string) => Promise<void>;
   deleteText: (id: string) => void;
+  deleteItems: (ids: string[]) => Promise<void>;
   addTag: (name: string) => Tag | null;
   renameTag: (id: string, name: string) => void;
   deleteTag: (id: string, force?: boolean) => boolean;
@@ -680,60 +681,62 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   },
 
   deletePhoto: async (id) => {
+    await get().deleteItems([id]);
+  },
+
+  deleteText: (id) => {
+    void get().deleteItems([id]);
+  },
+
+  deleteItems: async (ids) => {
+    const idSet = new Set(ids.filter(Boolean));
+    if (!idSet.size) return;
     const handle = workspaceHandle;
     const catalog = get().catalog;
-    const photo = catalog.photos.photos.find((p) => p.id === id);
-    if (!photo) return;
+    const photosToDelete = catalog.photos.photos.filter((photo) => idSet.has(photo.id));
     if (handle) {
-      for (const path of [photo.files.original, photo.files.display, photo.files.thumb]) {
-        if (!path) continue;
-        try {
-          await removeFile(handle, path);
-        } catch {
-          /* file may already be gone */
+      for (const photo of photosToDelete) {
+        for (const path of [photo.files.original, photo.files.display, photo.files.thumb]) {
+          if (!path) continue;
+          try {
+            await removeFile(handle, path);
+          } catch {
+            /* file may already be gone */
+          }
         }
       }
     }
     const thumbUrls = { ...get().thumbUrls };
     const displayUrls = { ...get().displayUrls };
-    if (thumbUrls[id]) {
-      URL.revokeObjectURL(thumbUrls[id]);
-      blobUrls.delete(thumbUrls[id]);
-      delete thumbUrls[id];
+    for (const photo of photosToDelete) {
+      if (thumbUrls[photo.id]) {
+        URL.revokeObjectURL(thumbUrls[photo.id]);
+        blobUrls.delete(thumbUrls[photo.id]);
+        delete thumbUrls[photo.id];
+      }
+      if (displayUrls[photo.id]) {
+        URL.revokeObjectURL(displayUrls[photo.id]);
+        blobUrls.delete(displayUrls[photo.id]);
+        delete displayUrls[photo.id];
+      }
     }
-    if (displayUrls[id]) {
-      URL.revokeObjectURL(displayUrls[id]);
-      blobUrls.delete(displayUrls[id]);
-      delete displayUrls[id];
-    }
-    const photos = catalog.photos.photos.filter((p) => p.id !== id);
-    const items = catalog.texts.items.filter((ref) => !(ref.type === "photo" && ref.id === id));
+    const photos = catalog.photos.photos.filter((photo) => !idSet.has(photo.id));
+    const texts = catalog.texts.texts.filter((text) => !idSet.has(text.id));
+    const items = catalog.texts.items.filter((ref) => !idSet.has(ref.id));
+    const selectedPhotoId = get().selectedPhotoId;
+    const previewPhotoId = get().previewPhotoId;
     set({
       catalog: {
         ...catalog,
         photos: { version: 1, photos },
-        texts: { ...catalog.texts, items: normalizeItems(photos, catalog.texts.texts, items) },
+        texts: { version: 1, texts, items: normalizeItems(photos, texts, items) },
       },
-      selectedPhotoId: get().selectedPhotoId === id ? null : get().selectedPhotoId,
-      selectedPhotoIds: get().selectedPhotoIds.filter((photoId) => photoId !== id),
+      selectedPhotoId: selectedPhotoId && idSet.has(selectedPhotoId) ? null : selectedPhotoId,
+      selectedPhotoIds: get().selectedPhotoIds.filter((itemId) => !idSet.has(itemId)),
+      previewPhotoId: previewPhotoId && idSet.has(previewPhotoId) ? null : previewPhotoId,
       dirty: true,
       thumbUrls,
       displayUrls,
-    });
-  },
-
-  deleteText: (id) => {
-    const catalog = get().catalog;
-    const texts = catalog.texts.texts.filter((text) => text.id !== id);
-    const items = catalog.texts.items.filter((ref) => !(ref.type === "text" && ref.id === id));
-    set({
-      catalog: {
-        ...catalog,
-        texts: { version: 1, texts, items: normalizeItems(catalog.photos.photos, texts, items) },
-      },
-      selectedPhotoId: get().selectedPhotoId === id ? null : get().selectedPhotoId,
-      selectedPhotoIds: get().selectedPhotoIds.filter((itemId) => itemId !== id),
-      dirty: true,
     });
   },
 

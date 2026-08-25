@@ -1,7 +1,27 @@
 "use client";
 
-import { isPublishTag } from "@/lib/catalog";
+import { useState } from "react";
+import { isPublishTag, type Tag } from "@/lib/catalog";
 import { useEditorStore } from "@/store/editor-store";
+
+export function confirmRemoveSelection(photoCount: number, textCount: number): boolean {
+  if (photoCount + textCount <= 0) return false;
+  if (photoCount === 1 && textCount === 0) return window.confirm("Bild aus dem Workspace entfernen?");
+  if (photoCount === 0 && textCount === 1) return window.confirm("Textkachel entfernen?");
+  const parts = [
+    photoCount ? `${photoCount} Bild${photoCount === 1 ? "" : "er"}` : null,
+    textCount ? `${textCount} Textkachel${textCount === 1 ? "" : "n"}` : null,
+  ].filter(Boolean);
+  return window.confirm(`${parts.join(" und ")} aus dem Workspace entfernen?`);
+}
+
+function findTag(tags: Tag[], name: string): Tag | undefined {
+  const needle = name.trim().toLocaleLowerCase("de");
+  if (!needle) return undefined;
+  return tags.find((tag) =>
+    [tag.name, tag.slug, tag.id].some((value) => value.toLocaleLowerCase("de") === needle),
+  );
+}
 
 export function MetadataPanel() {
   const photos = useEditorStore((s) => s.catalog.photos.photos);
@@ -14,10 +34,13 @@ export function MetadataPanel() {
   const tags = useEditorStore((s) => s.catalog.tags.tags);
   const updatePhoto = useEditorStore((s) => s.updatePhoto);
   const updateText = useEditorStore((s) => s.updateText);
+  const addTag = useEditorStore((s) => s.addTag);
   const setPhotosTag = useEditorStore((s) => s.setPhotosTag);
   const deletePhoto = useEditorStore((s) => s.deletePhoto);
   const deleteText = useEditorStore((s) => s.deleteText);
+  const deleteItems = useEditorStore((s) => s.deleteItems);
   const openPreview = useEditorStore((s) => s.openPreview);
+  const [tagDraft, setTagDraft] = useState("");
 
   if (selectedPhotoIds.length === 0) {
     return (
@@ -32,6 +55,30 @@ export function MetadataPanel() {
   const toggleTag = (tagId: string) => {
     const allOn = [...selectedPhotos, ...selectedTexts].every((item) => item.tags.includes(tagId));
     setPhotosTag(selectedIds, tagId, !allOn);
+  };
+  const assignTypedTags = (raw: string) => {
+    const names = raw
+      .split(",")
+      .map((name) => name.trim())
+      .filter(Boolean);
+    if (!selectedIds.length) return;
+    if (!names.length) {
+      setTagDraft("");
+      return;
+    }
+    let known = tags;
+    for (const name of names) {
+      const existing = findTag(known, name);
+      if (existing) {
+        setPhotosTag(selectedIds, existing.id, true);
+        continue;
+      }
+      const created = addTag(name);
+      if (!created) continue;
+      known = [...known, created];
+      setPhotosTag(selectedIds, created.id, true);
+    }
+    setTagDraft("");
   };
 
   return (
@@ -102,8 +149,33 @@ export function MetadataPanel() {
       )}
       <div>
         <div className="mb-1 text-xs text-[var(--edit-muted)]">Tags</div>
+        <form
+          className="mb-1.5"
+          onSubmit={(event) => {
+            event.preventDefault();
+            assignTypedTags(tagDraft);
+          }}
+        >
+          <input
+            className="edit-field"
+            value={tagDraft}
+            placeholder="Tag eingeben, Enter oder Komma"
+            aria-label="Tag eingeben"
+            onChange={(event) => {
+              const value = event.target.value;
+              if (value.includes(",")) {
+                const parts = value.split(",");
+                const rest = parts.pop() ?? "";
+                assignTypedTags(parts.join(","));
+                setTagDraft(rest);
+                return;
+              }
+              setTagDraft(value);
+            }}
+          />
+        </form>
         {tags.length === 0 ? (
-          <p className="text-xs text-[var(--edit-muted)]">Noch keine Tags — unter „Tags“ anlegen.</p>
+          <p className="text-xs text-[var(--edit-muted)]">Noch keine Tags — oben eingeben, um einen anzulegen.</p>
         ) : (
           <div className="flex flex-wrap gap-1.5">
             {[...tags].sort((a, b) => Number(isPublishTag(b)) - Number(isPublishTag(a))).map((tag) => {
@@ -145,7 +217,7 @@ export function MetadataPanel() {
             type="button"
             className="edit-btn self-start"
             onClick={() => {
-              if (window.confirm("Bild aus dem Workspace entfernen?")) void deletePhoto(photo.id);
+              if (confirmRemoveSelection(1, 0)) void deletePhoto(photo.id);
             }}
           >
             Bild löschen
@@ -157,10 +229,23 @@ export function MetadataPanel() {
           type="button"
           className="edit-btn self-start"
           onClick={() => {
-            if (window.confirm("Textkachel entfernen?")) deleteText(text.id);
+            if (confirmRemoveSelection(0, 1)) deleteText(text.id);
           }}
         >
           Textkachel löschen
+        </button>
+      ) : null}
+      {!photo && !text ? (
+        <button
+          type="button"
+          className="edit-btn self-start"
+          onClick={() => {
+            if (confirmRemoveSelection(selectedPhotos.length, selectedTexts.length)) {
+              void deleteItems(selectedPhotoIds);
+            }
+          }}
+        >
+          Auswahl löschen
         </button>
       ) : null}
     </aside>

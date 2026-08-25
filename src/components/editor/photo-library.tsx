@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   catalogFeed,
   DEFAULT_LAYOUT,
@@ -11,6 +11,7 @@ import {
 } from "@/lib/catalog";
 import { Lightbox } from "@/components/gallery/lightbox";
 import { LayoutColumnsPicker } from "@/components/editor/layout-columns-picker";
+import { confirmRemoveSelection } from "@/components/editor/metadata-panel";
 import { useEditorStore } from "@/store/editor-store";
 
 type FilterMode = "include" | "exclude";
@@ -69,6 +70,7 @@ export function PhotoLibrary() {
   const closePreview = useEditorStore((s) => s.closePreview);
   const reorderPhotos = useEditorStore((s) => s.reorderPhotos);
   const addTextTile = useEditorStore((s) => s.addTextTile);
+  const deleteItems = useEditorStore((s) => s.deleteItems);
   const updateSite = useEditorStore((s) => s.updateSite);
   const importProgress = useEditorStore((s) => s.importProgress);
   const canWrite = useEditorStore((s) => s.canWrite);
@@ -119,6 +121,29 @@ export function PhotoLibrary() {
   const previewAt = previewPhotoId ? previewPhotos.findIndex((photo) => photo.id === previewPhotoId) : -1;
   const textCount = catalog.texts?.texts.length ?? 0;
   const emptyLibrary = photos.length === 0 && textCount === 0;
+  const selectedPhotoCount = photos.filter((photo) => selectedPhotoIds.includes(photo.id)).length;
+  const selectedTextCount = (catalog.texts?.texts ?? []).filter((text) => selectedPhotoIds.includes(text.id)).length;
+
+  const removeSelected = useCallback(() => {
+    if (!canWrite || !selectedPhotoIds.length) return;
+    if (!confirmRemoveSelection(selectedPhotoCount, selectedTextCount)) return;
+    void deleteItems(selectedPhotoIds);
+  }, [canWrite, deleteItems, selectedPhotoCount, selectedPhotoIds, selectedTextCount]);
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "Backspace" && event.key !== "Delete") return;
+      if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return;
+      const target = event.target as HTMLElement | null;
+      const tag = target?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || target?.isContentEditable) return;
+      if (!selectedPhotoIds.length || !canWrite) return;
+      event.preventDefault();
+      removeSelected();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [canWrite, removeSelected, selectedPhotoIds.length]);
 
   const onFiles = useCallback(
     (list: FileList | File[] | null, beforeId?: string | null) => {
@@ -219,6 +244,11 @@ export function PhotoLibrary() {
             {selectedPhotoIds.length > 0 ? (
               <button type="button" className="edit-btn" onClick={() => selectPhotos([])}>
                 Auswahl aufheben
+              </button>
+            ) : null}
+            {selectedPhotoIds.length > 0 ? (
+              <button type="button" className="edit-btn" disabled={!canWrite} onClick={removeSelected}>
+                Löschen
               </button>
             ) : null}
             <button type="button" className="edit-btn" disabled={!canWrite} onClick={() => addTextTile()}>
