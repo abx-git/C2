@@ -81,6 +81,7 @@ export function Lightbox({
       <div className="g-lightbox-stage">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
+          key={photo.id}
           src={resolveUrl(photo, "display")}
           alt={label}
           draggable={false}

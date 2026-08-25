@@ -4,6 +4,8 @@ import { newId } from "@/lib/id";
 import {
   DEFAULT_LAYOUT,
   DEFAULT_PROTECTION,
+  FADE_IN_DURATION_MAX,
+  FADE_IN_DURATION_MIN,
   GALLERY_BACKGROUNDS,
   SLIDESHOW_INTERVAL_MAX,
   SLIDESHOW_INTERVAL_MIN,
@@ -191,6 +193,21 @@ function LayoutFields({
             }
           />
         </label>
+        <label className="block text-xs text-[var(--edit-muted)]">
+          Einblend-Dauer (s)
+          <input
+            type="number"
+            min={FADE_IN_DURATION_MIN}
+            max={FADE_IN_DURATION_MAX}
+            step={0.1}
+            className="edit-field mt-1"
+            disabled={!(layout.fadeIn ?? DEFAULT_LAYOUT.fadeIn)}
+            value={layout.fadeInDuration ?? DEFAULT_LAYOUT.fadeInDuration}
+            onChange={(event) =>
+              set({ fadeInDuration: Number(event.target.value) || DEFAULT_LAYOUT.fadeInDuration })
+            }
+          />
+        </label>
       </div>
       <div className="mt-3 flex flex-wrap gap-4 text-xs">
         <label className="inline-flex items-center gap-2 text-[var(--edit-ink)]">
@@ -200,6 +217,14 @@ function LayoutFields({
             onChange={(event) => set({ showPageTitle: event.target.checked })}
           />
           Seitentitel zeigen
+        </label>
+        <label className="inline-flex items-center gap-2 text-[var(--edit-ink)]">
+          <input
+            type="checkbox"
+            checked={layout.fadeIn ?? DEFAULT_LAYOUT.fadeIn}
+            onChange={(event) => set({ fadeIn: event.target.checked })}
+          />
+          Einblend-Effekt
         </label>
       </div>
     </section>

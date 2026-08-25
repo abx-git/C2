@@ -160,6 +160,8 @@ export function galleryThemeStyle(id: string | undefined): Record<string, string
 
 export const SLIDESHOW_INTERVAL_MIN = 2;
 export const SLIDESHOW_INTERVAL_MAX = 30;
+export const FADE_IN_DURATION_MIN = 0.2;
+export const FADE_IN_DURATION_MAX = 2;
 
 export type LayoutConfig = {
   /** Abstand zwischen Bildern, Pixel */
@@ -176,6 +178,10 @@ export type LayoutConfig = {
   background: GalleryBackgroundId;
   /** Diashow: Sekunden pro Bild */
   slideshowInterval: number;
+  /** Bilder sanft einblenden (Übersicht und Diashow) */
+  fadeIn: boolean;
+  /** Einblend-Dauer in Sekunden */
+  fadeInDuration: number;
 };
 
 export const DEFAULT_LAYOUT: LayoutConfig = {
@@ -186,10 +192,16 @@ export const DEFAULT_LAYOUT: LayoutConfig = {
   showPageTitle: true,
   background: "white",
   slideshowInterval: 5,
+  fadeIn: true,
+  fadeInDuration: 0.6,
 };
 
 export function clampSlideshowInterval(value: number): number {
   return Math.min(SLIDESHOW_INTERVAL_MAX, Math.max(SLIDESHOW_INTERVAL_MIN, Math.round(value)));
+}
+
+export function clampFadeInDuration(value: number): number {
+  return Math.min(FADE_IN_DURATION_MAX, Math.max(FADE_IN_DURATION_MIN, Math.round(value * 10) / 10));
 }
 
 export type ProtectionCrypto = {
@@ -403,6 +415,10 @@ export function parseLayout(raw: unknown): LayoutConfig {
   }
   if (typeof raw.slideshowInterval === "number" && Number.isFinite(raw.slideshowInterval)) {
     base.slideshowInterval = clampSlideshowInterval(raw.slideshowInterval);
+  }
+  if (typeof raw.fadeIn === "boolean") base.fadeIn = raw.fadeIn;
+  if (typeof raw.fadeInDuration === "number" && Number.isFinite(raw.fadeInDuration)) {
+    base.fadeInDuration = clampFadeInDuration(raw.fadeInDuration);
   }
   return base;
 }

@@ -5,6 +5,7 @@ import {
   DEFAULT_LAYOUT,
   catalogFeed,
   clampSlideshowInterval,
+  clampFadeInDuration,
   galleryThemeStyle,
   filterPhotos,
   flattenGalleryPages,
@@ -210,10 +211,20 @@ export function GalleryApp({ catalog, resolveUrl, className }: GalleryAppProps) 
 
   const heading = pageTitle(page, layout.showPageTitle);
   const intervalMs = clampSlideshowInterval(layout.slideshowInterval ?? DEFAULT_LAYOUT.slideshowInterval) * 1000;
+  const fadeIn = layout.fadeIn ?? DEFAULT_LAYOUT.fadeIn;
+  const fadeDuration = clampFadeInDuration(layout.fadeInDuration ?? DEFAULT_LAYOUT.fadeInDuration);
 
   return (
     <SaveGuard className={className}>
-      <div className="theme-gallery-v1" style={galleryThemeStyle(layout.background) as React.CSSProperties}>
+      <div
+        className={fadeIn ? "theme-gallery-v1 g-fade-in" : "theme-gallery-v1"}
+        style={
+          {
+            ...galleryThemeStyle(layout.background),
+            "--g-fade-duration": `${fadeDuration}s`,
+          } as React.CSSProperties
+        }
+      >
       <div className="g-name">{catalog.site.title}</div>
       <div className="g-essay-head">
         {heading ? <h1 className="g-essay-title">{heading}</h1> : <div className="g-essay-title" aria-hidden="true" />}

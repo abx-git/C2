@@ -202,6 +202,8 @@ async function main() {
       rowMinHeight: 160,
       rowMaxHeight: 440,
       showPageTitle: true,
+      fadeIn: true,
+      fadeInDuration: 0.6,
     },
     pages: [
       { id: "work", type: "work", title: "Work" },

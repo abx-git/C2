@@ -55,6 +55,8 @@ async function writeCatalogJs(outDir) {
         rowMaxHeight: 440,
         showPageTitle: true,
         background: "white",
+        fadeIn: true,
+        fadeInDuration: 0.6,
       },
       pages: [
         { id: "work", type: "work", title: "Work", visibility: "public" },
