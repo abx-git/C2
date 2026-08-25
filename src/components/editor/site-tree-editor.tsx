@@ -3,6 +3,7 @@
 import { newId } from "@/lib/id";
 import {
   DEFAULT_LAYOUT,
+  DEFAULT_PROTECTION,
   GALLERY_BACKGROUNDS,
   SLIDESHOW_INTERVAL_MAX,
   SLIDESHOW_INTERVAL_MIN,
@@ -24,8 +25,11 @@ export function SiteTreeEditor() {
   const site = useEditorStore((s) => s.catalog.site);
   const tags = useEditorStore((s) => s.catalog.tags.tags);
   const updateSite = useEditorStore((s) => s.updateSite);
+  const galleryPassword = useEditorStore((s) => s.galleryPassword);
+  const setGalleryPassword = useEditorStore((s) => s.setGalleryPassword);
 
   const setPages = (pages: SitePage[]) => updateSite({ ...site, pages });
+  const protection = site.protection ?? DEFAULT_PROTECTION;
 
   return (
     <div className="mx-auto w-full max-w-2xl">
@@ -55,6 +59,12 @@ export function SiteTreeEditor() {
       <LayoutFields
         layout={site.layout ?? DEFAULT_LAYOUT}
         onChange={(layout) => updateSite({ ...site, layout })}
+      />
+      <ProtectionFields
+        protection={protection}
+        password={galleryPassword}
+        onProtection={(next) => updateSite({ ...site, protection: next })}
+        onPassword={setGalleryPassword}
       />
       <PageList pages={site.pages} tags={tags} onChange={setPages} depth={0} />
       <div className="mt-4 flex gap-2">
@@ -192,6 +202,78 @@ function LayoutFields({
           Seitentitel zeigen
         </label>
       </div>
+    </section>
+  );
+}
+
+function ProtectionFields({
+  protection,
+  password,
+  onProtection,
+  onPassword,
+}: {
+  protection: typeof DEFAULT_PROTECTION;
+  password: string;
+  onProtection: (protection: typeof DEFAULT_PROTECTION) => void;
+  onPassword: (password: string) => void;
+}) {
+  return (
+    <section className="mb-6 rounded-xl border border-[var(--edit-line)] bg-[var(--edit-panel)] p-4">
+      <h3 className="mb-1 text-sm font-medium">Bildschutz</h3>
+      <p className="mb-3 text-xs text-[var(--edit-muted)]">
+        Rechtsklick in der Galerie wird unterbunden. Ein Passwort macht die Dateien im Deploy-Ordner unlesbar — direkte
+        URLs sind dann kein Bild mehr. Screenshots und Speichern nach dem Entsperren bleiben möglich.
+      </p>
+      <label className="mb-3 flex items-start gap-2 text-xs text-[var(--edit-ink)]">
+        <input
+          type="checkbox"
+          className="mt-0.5"
+          checked={protection.watermark}
+          onChange={(event) => onProtection({ ...protection, watermark: event.target.checked })}
+        />
+        <span>
+          Wasserzeichen auf Display-Bildern
+          <span className="mt-0.5 block text-[var(--edit-muted)]">Wird beim Deploy unten rechts eingebrannt.</span>
+        </span>
+      </label>
+      {protection.watermark ? (
+        <label className="mb-3 block text-xs text-[var(--edit-muted)]">
+          Wasserzeichen-Text
+          <input
+            className="edit-field mt-1"
+            value={protection.watermarkText}
+            placeholder="Leer = Titel der Sammlung"
+            onChange={(event) => onProtection({ ...protection, watermarkText: event.target.value })}
+          />
+        </label>
+      ) : null}
+      <label className="mb-3 flex items-start gap-2 text-xs text-[var(--edit-ink)]">
+        <input
+          type="checkbox"
+          className="mt-0.5"
+          checked={protection.passwordProtect}
+          onChange={(event) => onProtection({ ...protection, passwordProtect: event.target.checked })}
+        />
+        <span>
+          Galerie mit Passwort schützen
+          <span className="mt-0.5 block text-[var(--edit-muted)]">
+            Display- und Vorschaubilder werden verschlüsselt. Das Passwort steht nur in diesem Workspace, nicht in der
+            veröffentlichten Site.
+          </span>
+        </span>
+      </label>
+      {protection.passwordProtect ? (
+        <label className="block text-xs text-[var(--edit-muted)]">
+          Passwort
+          <input
+            className="edit-field mt-1"
+            type="password"
+            autoComplete="new-password"
+            value={password}
+            onChange={(event) => onPassword(event.target.value)}
+          />
+        </label>
+      ) : null}
     </section>
   );
 }

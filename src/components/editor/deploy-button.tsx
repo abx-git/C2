@@ -35,16 +35,25 @@ export function DeployButton() {
           try {
             await saveCatalog();
             const originBase = appBase();
-            const result = await writeDeployFolder({
+          const result = await writeDeployFolder({
               dest,
               catalog,
               workspace,
               originBase,
+              password: useEditorStore.getState().galleryPassword,
             });
             const appNote = result.copiedApp
               ? "Eigenständiger Ordner: index.html im Finder öffnen, JSON und veröffentlichte Bilder."
               : "Nur JSON und Bilder geschrieben. Einmal „npm run build:static“ ausführen, dann erneut deployen — erst dann ist der Ordner allein auslieferbar.";
-            setInfo(`${appNote} ${result.photoCount} Bild${result.photoCount === 1 ? "" : "er"}.`);
+            const protectNote = [
+              result.watermarked ? "Wasserzeichen gesetzt." : null,
+              result.encrypted ? "Bilder verschlüsselt." : null,
+            ]
+              .filter(Boolean)
+              .join(" ");
+            setInfo(
+              `${appNote} ${result.photoCount} Bild${result.photoCount === 1 ? "" : "er"}.${protectNote ? ` ${protectNote}` : ""}`,
+            );
           } catch (err) {
             setInfo(err instanceof Error ? err.message : "Deploy fehlgeschlagen");
           } finally {

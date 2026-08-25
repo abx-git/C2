@@ -83,6 +83,7 @@ export function Lightbox({
         <img
           src={resolveUrl(photo, "display")}
           alt={label}
+          draggable={false}
           width={photo.width}
           height={photo.height}
           style={{ maxWidth: `min(100%, ${photo.width}px)`, maxHeight: `min(100%, ${photo.height}px)` }}

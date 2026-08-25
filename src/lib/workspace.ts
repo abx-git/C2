@@ -153,6 +153,22 @@ export async function writeJsonFile(root: FileSystemDirectoryHandle, relativePat
   await writeTextFile(root, relativePath, `${JSON.stringify(value, null, 2)}\n`);
 }
 
+export async function emptyDirectory(root: FileSystemDirectoryHandle, relativeDir: string): Promise<void> {
+  let folder: FileSystemDirectoryHandle;
+  try {
+    folder = await getDirectoryAtPath(root, relativeDir);
+  } catch {
+    return;
+  }
+  const entries: { name: string; kind: string }[] = [];
+  for await (const [name, handle] of folder.entries()) {
+    entries.push({ name, kind: handle.kind });
+  }
+  for (const entry of entries) {
+    await folder.removeEntry(entry.name, { recursive: entry.kind === "directory" });
+  }
+}
+
 export async function copyFileBetween(
   sourceRoot: FileSystemDirectoryHandle,
   sourcePath: string,

@@ -14,5 +14,6 @@
 npm-debug.log*
 .env
 .env*.local
+**/gallery-secret.json
 *.tsbuildinfo
 .cursor/

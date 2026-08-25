@@ -192,14 +192,43 @@ export function clampSlideshowInterval(value: number): number {
   return Math.min(SLIDESHOW_INTERVAL_MAX, Math.max(SLIDESHOW_INTERVAL_MIN, Math.round(value)));
 }
 
+export type ProtectionCrypto = {
+  salt: string;
+  iterations: number;
+  verifier: string;
+};
+
+export type SiteProtection = {
+  watermark: boolean;
+  watermarkText: string;
+  passwordProtect: boolean;
+  crypto?: ProtectionCrypto;
+};
+
+export const DEFAULT_PROTECTION: SiteProtection = {
+  watermark: false,
+  watermarkText: "",
+  passwordProtect: false,
+};
+
+export const ENCRYPTED_IMAGE_EXT = "c2";
+
 export type SiteFile = {
   version: typeof CATALOG_VERSION;
   title: string;
   theme: SiteTheme;
   contactEmail?: string;
   layout: LayoutConfig;
+  protection: SiteProtection;
   pages: SitePage[];
 };
+
+export const GALLERY_SECRET_PATH = "data/gallery-secret.json";
+
+export function parseGallerySecret(raw: unknown): string {
+  if (!isRecord(raw)) return "";
+  return typeof raw.password === "string" ? raw.password : "";
+}
 
 export type Catalog = {
   photos: PhotosFile;
@@ -227,6 +256,7 @@ export function emptySite(): SiteFile {
     theme: "gallery-v1",
     contactEmail: "",
     layout: { ...DEFAULT_LAYOUT },
+    protection: { ...DEFAULT_PROTECTION },
     pages: [
       { id: "work", type: "work", title: "Work", visibility: "public" },
       {
@@ -377,6 +407,43 @@ export function parseLayout(raw: unknown): LayoutConfig {
   return base;
 }
 
+export function parseProtectionCrypto(raw: unknown): ProtectionCrypto | undefined {
+  if (!isRecord(raw)) return undefined;
+  const salt = typeof raw.salt === "string" ? raw.salt : "";
+  const verifier = typeof raw.verifier === "string" ? raw.verifier : "";
+  const iterations = typeof raw.iterations === "number" && Number.isFinite(raw.iterations) ? Math.round(raw.iterations) : 0;
+  if (!salt || !verifier || iterations < 1) return undefined;
+  return { salt, iterations, verifier };
+}
+
+export function parseProtection(raw: unknown): SiteProtection {
+  if (!isRecord(raw)) return { ...DEFAULT_PROTECTION };
+  return {
+    watermark: raw.watermark === true,
+    watermarkText: typeof raw.watermarkText === "string" ? raw.watermarkText : "",
+    passwordProtect: raw.passwordProtect === true,
+    crypto: parseProtectionCrypto(raw.crypto),
+  };
+}
+
+export function editorProtection(protection: SiteProtection | undefined): SiteProtection {
+  const next = parseProtection(protection);
+  return {
+    watermark: next.watermark,
+    watermarkText: next.watermarkText,
+    passwordProtect: next.passwordProtect,
+  };
+}
+
+export function watermarkLabel(protection: SiteProtection | undefined, title: string): string {
+  const custom = protection?.watermarkText.trim();
+  return custom || title.trim() || "Photos";
+}
+
+export function hasGalleryCrypto(site: SiteFile): boolean {
+  return Boolean(parseProtectionCrypto(site.protection?.crypto));
+}
+
 export function parseSite(raw: unknown): SiteFile {
   if (!isRecord(raw)) return emptySite();
   const pages = Array.isArray(raw.pages) ? raw.pages.map(parsePage).filter((p): p is SitePage => p !== null) : [];
@@ -386,6 +453,7 @@ export function parseSite(raw: unknown): SiteFile {
     theme: raw.theme === "gallery-v1" ? "gallery-v1" : "gallery-v1",
     contactEmail: typeof raw.contactEmail === "string" ? raw.contactEmail : "",
     layout: parseLayout(raw.layout),
+    protection: parseProtection(raw.protection),
     pages: pages.length ? pages : emptySite().pages,
   };
 }
@@ -553,6 +621,10 @@ export function toPublicCatalog(catalog: Catalog): Catalog {
     texts: { version: 1, texts, items: normalizeItems(photos, texts, textsFile.items) },
     site: {
       ...catalog.site,
+      protection: {
+        ...editorProtection(catalog.site.protection),
+        crypto: parseProtectionCrypto(catalog.site.protection?.crypto),
+      },
       pages: stripPrivatePages(withInheritedVisibility(catalog.site.pages)),
     },
   };
@@ -563,19 +635,21 @@ function fileExt(path: string): string {
   return match?.[1]?.toLowerCase() ?? "webp";
 }
 
-export function publicPhotoFiles(photo: Photo): PhotoFiles {
+export function publicPhotoFiles(photo: Photo, encrypted = false): PhotoFiles {
+  const displayExt = encrypted ? ENCRYPTED_IMAGE_EXT : fileExt(photo.files.display);
+  const thumbExt = encrypted ? ENCRYPTED_IMAGE_EXT : fileExt(photo.files.thumb);
   return {
-    display: `images/display/${photo.id}.${fileExt(photo.files.display)}`,
-    thumb: `images/thumbs/${photo.id}.${fileExt(photo.files.thumb)}`,
+    display: `images/display/${photo.id}.${displayExt}`,
+    thumb: `images/thumbs/${photo.id}.${thumbExt}`,
   };
 }
 
-export function toPublicPhotos(photos: PhotosFile): PhotosFile {
+export function toPublicPhotos(photos: PhotosFile, encrypted = false): PhotosFile {
   return {
     version: 1,
     photos: photos.photos.map((photo) => ({
       ...photo,
-      files: publicPhotoFiles(photo),
+      files: publicPhotoFiles(photo, encrypted),
     })),
   };
 }

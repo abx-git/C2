@@ -19,6 +19,7 @@ import { appBase } from "@/lib/app-base";
 import { layoutEssayFeed } from "@/lib/essay";
 import { ContactForm } from "./contact-form";
 import { Lightbox } from "./lightbox";
+import { SaveGuard } from "./protect-images";
 
 type GalleryAppProps = {
   catalog: Catalog;
@@ -98,7 +99,7 @@ function WorkIndex({
           <button key={page.id} type="button" className="g-work-tile" onClick={() => onOpen(page.id)}>
             {src ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={src} alt="" />
+              <img src={src} alt="" draggable={false} />
             ) : (
               <span className="g-work-fallback" />
             )}
@@ -211,10 +212,8 @@ export function GalleryApp({ catalog, resolveUrl, className }: GalleryAppProps) 
   const intervalMs = clampSlideshowInterval(layout.slideshowInterval ?? DEFAULT_LAYOUT.slideshowInterval) * 1000;
 
   return (
-    <div
-      className={`theme-gallery-v1 ${className ?? ""}`.trim()}
-      style={galleryThemeStyle(layout.background) as React.CSSProperties}
-    >
+    <SaveGuard className={className}>
+      <div className="theme-gallery-v1" style={galleryThemeStyle(layout.background) as React.CSSProperties}>
       <div className="g-name">{catalog.site.title}</div>
       <div className="g-essay-head">
         {heading ? <h1 className="g-essay-title">{heading}</h1> : <div className="g-essay-title" aria-hidden="true" />}
@@ -297,7 +296,7 @@ export function GalleryApp({ catalog, resolveUrl, className }: GalleryAppProps) 
                         aria-label={caption ? `${label}. ${caption}` : label}
                       >
                         {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={resolveUrl(photo, "display")} alt={label} />
+                        <img src={resolveUrl(photo, "display")} alt={label} draggable={false} />
                         {caption ? <span className="g-shot-caption">{caption}</span> : null}
                       </button>
                     );
@@ -320,6 +319,7 @@ export function GalleryApp({ catalog, resolveUrl, className }: GalleryAppProps) 
           intervalMs={intervalMs}
         />
       ) : null}
-    </div>
+      </div>
+    </SaveGuard>
   );
 }

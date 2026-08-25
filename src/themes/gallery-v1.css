@@ -20,6 +20,60 @@
   grid-template-rows: auto minmax(0, 1fr);
 }
 
+.g-save-guard {
+  position: relative;
+  height: 100%;
+  min-height: 100%;
+}
+
+.g-save-hint {
+  position: fixed;
+  left: 50%;
+  bottom: 1.4rem;
+  z-index: 80;
+  transform: translateX(-50%);
+  padding: 0.45rem 0.85rem;
+  background: var(--g-ink);
+  color: var(--g-bg);
+  font-size: 0.75rem;
+  letter-spacing: 0.01em;
+  pointer-events: none;
+}
+
+.theme-gallery-v1 img {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-user-drag: none;
+}
+
+.theme-gallery-v1 .g-unlock {
+  max-width: 22rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  padding: 18vh 0 3rem;
+}
+
+.theme-gallery-v1 .g-unlock-copy {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.theme-gallery-v1 .g-unlock label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.78rem;
+  color: var(--g-muted);
+}
+
+.theme-gallery-v1 .g-unlock-error {
+  margin: 0;
+  font-size: 0.78rem;
+  color: #b42318;
+}
+
 .theme-gallery-v1 a {
   color: inherit;
   text-decoration: none;

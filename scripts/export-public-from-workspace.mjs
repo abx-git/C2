@@ -40,6 +40,13 @@ try {
   /* optional */
 }
 
+if (site?.protection?.watermark || site?.protection?.passwordProtect) {
+  console.error(
+    "Wasserzeichen oder Passwortschutz ist aktiv. Bitte über den Editor deployen (Deploy-Ordner) — dieses Skript kann Bilder nicht stempeln oder verschlüsseln.",
+  );
+  process.exit(1);
+}
+
 const photos = (photosFile.photos ?? []).filter((photo) => isPublish(photo.tags));
 const texts = (textsFile.texts ?? []).filter((text) => isPublish(text.tags));
 const photoIds = new Set(photos.map((photo) => photo.id));

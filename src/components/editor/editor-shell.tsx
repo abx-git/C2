@@ -33,6 +33,7 @@ export function EditorShell() {
   const tab = useEditorStore((s) => s.tab);
   const setTab = useEditorStore((s) => s.setTab);
   const dirty = useEditorStore((s) => s.dirty);
+  const galleryPassword = useEditorStore((s) => s.galleryPassword);
   const message = useEditorStore((s) => s.message);
   const error = useEditorStore((s) => s.error);
   const catalog = useEditorStore((s) => s.catalog);
@@ -49,7 +50,7 @@ export function EditorShell() {
       void saveCatalog();
     }, 400);
     return () => window.clearTimeout(timer);
-  }, [dirty, catalog, saveCatalog]);
+  }, [dirty, catalog, galleryPassword, saveCatalog]);
 
   useEffect(() => {
     if (tab !== "preview" || status !== "ready") return;

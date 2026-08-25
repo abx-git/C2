@@ -2,11 +2,14 @@ import { create } from "zustand";
 import { BRAVE_FS_HELP, isBrave } from "@/lib/browser";
 import {
   createTag,
+  editorProtection,
   emptyCatalog,
   emptyTexts,
   ensurePublishTag,
   isPublishTag,
   parseCatalog,
+  parseGallerySecret,
+  GALLERY_SECRET_PATH,
   tagInUse,
   normalizeItems,
   type Catalog,
@@ -60,6 +63,7 @@ type EditorState = {
   message: string | null;
   error: string | null;
   dirty: boolean;
+  galleryPassword: string;
   thumbUrls: Record<string, string>;
   displayUrls: Record<string, string>;
   restoring: boolean;
@@ -89,6 +93,7 @@ type EditorState = {
   renameTag: (id: string, name: string) => void;
   deleteTag: (id: string, force?: boolean) => boolean;
   updateSite: (site: SiteFile) => void;
+  setGalleryPassword: (password: string) => void;
   saveCatalog: () => Promise<void>;
   pickDeployFolder: () => Promise<FileSystemDirectoryHandle | null>;
   getWorkspaceHandle: () => FileSystemDirectoryHandle | null;
@@ -249,6 +254,7 @@ async function presentWorkspace(
   });
   await ensureWorkspaceLayout(handle);
   const catalog = await loadCatalogFromHandle(handle);
+  const secret = parseGallerySecret(await readJsonFile(handle, GALLERY_SECRET_PATH));
   if (loadId !== workspaceLoadId) return;
   workspaceHandle = handle;
   await saveDirectoryHandle(handle);
@@ -260,6 +266,7 @@ async function presentWorkspace(
     workspaceLabel: handle.name,
     canWrite: true,
     catalog,
+    galleryPassword: secret,
     restoring: false,
     needsGesture: false,
     dirty: false,
@@ -296,6 +303,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   message: null,
   error: null,
   dirty: false,
+  galleryPassword: "",
   thumbUrls: {},
   displayUrls: {},
   restoring: true,
@@ -426,6 +434,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       selectedPhotoIds: [],
       previewPhotoId: null,
       dirty: false,
+      galleryPassword: "",
       thumbUrls: {},
       displayUrls: {},
       restoring: false,
@@ -784,18 +793,38 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   },
 
   updateSite: (site) => {
-    set({ catalog: { ...get().catalog, site }, dirty: true });
+    set({
+      catalog: {
+        ...get().catalog,
+        site: { ...site, protection: editorProtection(site.protection) },
+      },
+      dirty: true,
+    });
+  },
+
+  setGalleryPassword: (password) => {
+    set({ galleryPassword: password, dirty: true });
   },
 
   saveCatalog: async () => {
     const handle = workspaceHandle;
-    const { catalog, canWrite, dirty } = get();
+    const { catalog, canWrite, dirty, galleryPassword } = get();
     if (!handle || !canWrite || !dirty) return;
+    const site = { ...catalog.site, protection: editorProtection(catalog.site.protection) };
     await writeJsonFile(handle, "data/photos.json", catalog.photos);
     await writeJsonFile(handle, "data/tags.json", catalog.tags);
-    await writeJsonFile(handle, "data/site.json", catalog.site);
+    await writeJsonFile(handle, "data/site.json", site);
     await writeJsonFile(handle, "data/texts.json", catalog.texts);
-    set({ dirty: false });
+    if (site.protection.passwordProtect && galleryPassword) {
+      await writeJsonFile(handle, GALLERY_SECRET_PATH, { password: galleryPassword });
+    } else {
+      try {
+        await removeFile(handle, GALLERY_SECRET_PATH);
+      } catch {
+        /* optional */
+      }
+    }
+    set({ dirty: false, catalog: { ...catalog, site } });
   },
 
   pickDeployFolder: async () => pickDirectory("readwrite"),

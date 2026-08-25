@@ -1,10 +1,18 @@
-import { toPublicCatalog, toPublicPhotos, type Catalog } from "./catalog";
+import {
+  toPublicCatalog,
+  toPublicPhotos,
+  watermarkLabel,
+  type Catalog,
+  type SiteProtection,
+} from "./catalog";
 import { catalogBootstrapScript, injectCatalogIntoHtml } from "./catalog-source";
 import { rewriteAssetPaths } from "./deploy-paths";
+import { createCryptoParams, encryptBytes, stampWatermark } from "./image-protect";
 import {
   copyDirectoryHandle,
-  copyFileBetween,
+  emptyDirectory,
   listRelativeFiles,
+  readBinaryFile,
   readTextFile,
   writeBinaryFile,
   writeJsonFile,
@@ -15,6 +23,8 @@ export type DeployResult = {
   photoCount: number;
   copiedApp: boolean;
   appSource: "origin" | "folder" | "none";
+  encrypted: boolean;
+  watermarked: boolean;
 };
 
 type Manifest = {
@@ -75,12 +85,32 @@ async function copyAppFromOrigin(dest: FileSystemDirectoryHandle, originBase: st
   return true;
 }
 
+function publicProtection(protection: SiteProtection | undefined, crypto?: SiteProtection["crypto"]): SiteProtection {
+  return {
+    watermark: Boolean(protection?.watermark),
+    watermarkText: protection?.watermarkText ?? "",
+    passwordProtect: false,
+    ...(crypto ? { crypto } : {}),
+  };
+}
+
+async function publishImage(
+  file: File,
+  opts: { watermark?: string; key?: CryptoKey },
+): Promise<BufferSource | Blob> {
+  let blob: Blob = file;
+  if (opts.watermark) blob = await stampWatermark(blob, opts.watermark);
+  if (opts.key) return encryptBytes(opts.key, await blob.arrayBuffer());
+  return blob;
+}
+
 export async function writeDeployFolder(opts: {
   dest: FileSystemDirectoryHandle;
   catalog: Catalog;
   workspace: FileSystemDirectoryHandle;
   appFolder?: FileSystemDirectoryHandle | null;
   originBase?: string;
+  password?: string;
 }): Promise<DeployResult> {
   let copiedApp = false;
   let appSource: DeployResult["appSource"] = "none";
@@ -94,13 +124,39 @@ export async function writeDeployFolder(opts: {
     if (copiedApp) appSource = "origin";
   }
 
+  const protection = opts.catalog.site.protection;
+  const password = (opts.password ?? "").trim();
+  if (protection?.passwordProtect && !password) {
+    throw new Error("Galerie-Passwort ist aktiviert, aber leer. Bitte unter Struktur ein Passwort setzen.");
+  }
+
+  let crypto = protection?.crypto;
+  let key: CryptoKey | undefined;
+  if (protection?.passwordProtect) {
+    const created = await createCryptoParams(password);
+    crypto = created.crypto;
+    key = created.key;
+  } else {
+    crypto = undefined;
+  }
+
+  await emptyDirectory(opts.dest, "images/display");
+  await emptyDirectory(opts.dest, "images/thumbs");
+
   const publicCatalog = toPublicCatalog(opts.catalog);
-  const publicPhotos = toPublicPhotos(publicCatalog.photos);
+  const encrypted = Boolean(key);
+  const publicPhotos = toPublicPhotos(publicCatalog.photos, encrypted);
+  const publicSite = {
+    ...publicCatalog.site,
+    protection: publicProtection(protection, crypto),
+  };
+  const published = { ...publicCatalog, photos: publicPhotos, site: publicSite };
+
   await writeJsonFile(opts.dest, "data/photos.json", publicPhotos);
-  await writeJsonFile(opts.dest, "data/tags.json", publicCatalog.tags);
-  await writeJsonFile(opts.dest, "data/site.json", publicCatalog.site);
-  await writeJsonFile(opts.dest, "data/texts.json", publicCatalog.texts);
-  const bootstrap = catalogBootstrapScript({ ...publicCatalog, photos: publicPhotos });
+  await writeJsonFile(opts.dest, "data/tags.json", published.tags);
+  await writeJsonFile(opts.dest, "data/site.json", publicSite);
+  await writeJsonFile(opts.dest, "data/texts.json", published.texts);
+  const bootstrap = catalogBootstrapScript(published);
   await writeTextFile(opts.dest, "data/catalog.js", `${bootstrap}\n`);
   const indexHtml = await readTextFile(opts.dest, "index.html");
   if (indexHtml) {
@@ -108,15 +164,23 @@ export async function writeDeployFolder(opts: {
   }
   await rewriteCopiedAppForFileOpen(opts.dest);
 
+  const mark = protection?.watermark ? watermarkLabel(protection, opts.catalog.site.title) : "";
   for (const photo of publicCatalog.photos.photos) {
     const files = publicPhotos.photos.find((item) => item.id === photo.id)?.files ?? photo.files;
-    await copyFileBetween(opts.workspace, photo.files.display, opts.dest, files.display);
-    await copyFileBetween(opts.workspace, photo.files.thumb, opts.dest, files.thumb);
+    const displayFile = await readBinaryFile(opts.workspace, photo.files.display);
+    const thumbFile = await readBinaryFile(opts.workspace, photo.files.thumb);
+    if (!displayFile || !thumbFile) throw new Error(`Datei fehlt: ${photo.originalName || photo.id}`);
+    const displayOut = await publishImage(displayFile, { watermark: mark || undefined, key });
+    const thumbOut = await publishImage(thumbFile, { key });
+    await writeBinaryFile(opts.dest, files.display, displayOut);
+    await writeBinaryFile(opts.dest, files.thumb, thumbOut);
   }
 
   return {
     photoCount: publicCatalog.photos.photos.length,
     copiedApp,
     appSource,
+    encrypted,
+    watermarked: Boolean(mark),
   };
 }
