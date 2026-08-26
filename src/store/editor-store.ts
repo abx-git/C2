@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { BRAVE_FS_HELP, isBrave } from "@/lib/browser";
 import {
+  catalogFeed,
   createTag,
   editorProtection,
   emptyCatalog,
@@ -15,6 +16,7 @@ import {
   normalizeItems,
   type Catalog,
   type FeedRef,
+  type GalleryFilter,
   type Photo,
   type SiteFile,
   type SitePage,
@@ -89,6 +91,7 @@ type EditorState = {
   addTextTile: () => string | null;
   setPhotosTag: (ids: string[], tagId: string, on: boolean) => void;
   reorderPhotos: (fromId: string, toId: string, visibleIds: string[]) => void;
+  sortGalleryByTakenAt: (filter: GalleryFilter) => void;
   deletePhoto: (id: string) => Promise<void>;
   deleteText: (id: string) => void;
   deleteItems: (ids: string[]) => Promise<void>;
@@ -143,6 +146,32 @@ function applyVisibleOrder<T extends { id: string }>(list: T[], visibleIds: stri
     const id = queue.shift();
     return (id && byId.get(id)) || item;
   });
+}
+
+function takenAtValue(iso: string | null): number {
+  if (!iso) return Number.POSITIVE_INFINITY;
+  const value = Date.parse(iso);
+  return Number.isNaN(value) ? Number.POSITIVE_INFINITY : value;
+}
+
+function sortVisiblePhotosByTakenAt(visibleIds: string[], photos: Photo[]): string[] {
+  const byId = new Map(photos.map((photo) => [photo.id, photo]));
+  const indexes: number[] = [];
+  const ids: string[] = [];
+  visibleIds.forEach((id, index) => {
+    if (!byId.has(id)) return;
+    indexes.push(index);
+    ids.push(id);
+  });
+  ids.sort((a, b) => {
+    const delta = takenAtValue(byId.get(a)!.takenAt) - takenAtValue(byId.get(b)!.takenAt);
+    return delta !== 0 ? delta : visibleIds.indexOf(a) - visibleIds.indexOf(b);
+  });
+  const next = [...visibleIds];
+  indexes.forEach((index, i) => {
+    next[index] = ids[i]!;
+  });
+  return next;
 }
 
 async function loadCatalogFromHandle(handle: FileSystemDirectoryHandle): Promise<Catalog> {
@@ -688,6 +717,24 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const nextItems = applyVisibleOrder(items, visibleIds, nextVisible);
     set({
       catalog: { ...catalog, texts: { ...catalog.texts, items: nextItems } },
+      dirty: true,
+    });
+  },
+
+  sortGalleryByTakenAt: (filter) => {
+    const catalog = get().catalog;
+    const items = normalizeItems(catalog.photos.photos, catalog.texts.texts, catalog.texts.items);
+    const visibleIds = catalogFeed(catalog, filter.tags.length ? filter : undefined).map((item) =>
+      item.type === "photo" ? item.photo.id : item.text.id,
+    );
+    if (visibleIds.length < 2) return;
+    const nextVisible = sortVisiblePhotosByTakenAt(visibleIds, catalog.photos.photos);
+    if (nextVisible.every((id, index) => id === visibleIds[index])) return;
+    set({
+      catalog: {
+        ...catalog,
+        texts: { ...catalog.texts, items: applyVisibleOrder(items, visibleIds, nextVisible) },
+      },
       dirty: true,
     });
   },

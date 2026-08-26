@@ -435,6 +435,23 @@ function PageList({
                   );
                 })
               )}
+              <button
+                type="button"
+                className="edit-btn ml-1"
+                title="Älteste zuerst. Danach per Ziehen in der Bilderliste ändern."
+                onClick={() => {
+                  if (
+                    !window.confirm(
+                      "Bilder dieser Seite nach Aufnahmezeit sortieren (älteste zuerst)? Die Reihenfolge kannst du danach unter Bilder wieder per Ziehen ändern.",
+                    )
+                  ) {
+                    return;
+                  }
+                  useEditorStore.getState().sortGalleryByTakenAt(page.filter);
+                }}
+              >
+                Nach Aufnahmezeit
+              </button>
             </div>
             <CoverPicker
               value={page.cover}
