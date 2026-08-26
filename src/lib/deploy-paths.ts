@@ -4,12 +4,15 @@ function assetPrefixFor(relPath: string): string {
   return "../".repeat(relPath.slice(0, slash).split("/").filter(Boolean).length);
 }
 
-/** `/C2/edit` → `/C2`; localhost `/edit` → "". */
+/** `/C2/edit` → `/C2`; editor at `/C2` → `/C2`; localhost `/` → "". */
 export function editorSiteBasePath(pathname = typeof window === "undefined" ? "" : window.location.pathname): string {
   const path = pathname.replace(/\/+$/, "");
-  if (!path.endsWith("/edit")) return "";
-  const parent = path.slice(0, -"/edit".length);
-  return parent === "/" ? "" : parent;
+  if (path.endsWith("/edit")) {
+    const parent = path.slice(0, -"/edit".length);
+    return parent === "/" ? "" : parent;
+  }
+  if (path && path !== "/") return path;
+  return "";
 }
 
 function collectAssetBases(content: string, extraBase = ""): string[] {

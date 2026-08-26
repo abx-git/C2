@@ -86,15 +86,7 @@ function LoadedGallery({ catalog, error }: { catalog: Catalog; error: string | n
         <div className="g-essay-title" aria-hidden="true" />
         <aside className="g-rail" />
         <main className="g-essay">
-          <p className="g-empty">
-            {error ?? "Noch keine veröffentlichten Bilder."}
-            {!error && typeof window !== "undefined" && window.location.protocol !== "file:" ? (
-              <>
-                {" "}
-                <a href="./edit/">Editor</a>
-              </>
-            ) : null}
-          </p>
+          <p className="g-empty">{error ?? "Noch keine veröffentlichten Bilder."}</p>
         </main>
       </div>
     );
