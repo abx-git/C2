@@ -13,7 +13,19 @@ import {
 import { Lightbox } from "@/components/gallery/lightbox";
 import { LayoutColumnsPicker } from "@/components/editor/layout-columns-picker";
 import { confirmRemoveSelection, MetadataPanel } from "@/components/editor/metadata-panel";
+import { fitMaxEdge, THUMB_MAX_EDGE } from "@/lib/image-prepare";
 import { useEditorStore } from "@/store/editor-store";
+
+const LIBRARY_GAP_PX = 8;
+
+function libraryColumnCount(width: number, maxTile: number, gap = LIBRARY_GAP_PX): number {
+  if (width <= 0 || maxTile <= 0) return 1;
+  return Math.max(1, Math.ceil((width + gap) / (maxTile + gap)));
+}
+
+function thumbNativeSize(photo: Photo): { width: number; height: number } {
+  return fitMaxEdge(photo.width, photo.height, THUMB_MAX_EDGE);
+}
 
 type FilterMode = "include" | "exclude";
 
@@ -83,6 +95,8 @@ export function PhotoLibrary() {
   const [ratingFilter, setRatingFilter] = useState<Set<number>>(() => new Set());
   const [query, setQuery] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
+  const workAreaRef = useRef<HTMLDivElement>(null);
+  const [workAreaWidth, setWorkAreaWidth] = useState(0);
   const reordering = useRef(false);
   const didDrag = useRef(false);
   const clickTimer = useRef<number | null>(null);
@@ -152,6 +166,12 @@ export function PhotoLibrary() {
   const emptyLibrary = photos.length === 0 && textCount === 0;
   const selectedPhotoCount = photos.filter((photo) => selectedPhotoIds.includes(photo.id)).length;
   const selectedTextCount = (catalog.texts?.texts ?? []).filter((text) => selectedPhotoIds.includes(text.id)).length;
+  const maxTile = visible.reduce((max, item) => {
+    if (item.type !== "photo") return Math.max(max, THUMB_MAX_EDGE);
+    const native = thumbNativeSize(item.photo);
+    return Math.max(max, native.width, native.height);
+  }, 1);
+  const libraryColumns = libraryColumnCount(workAreaWidth, Math.min(maxTile, THUMB_MAX_EDGE));
 
   const removeSelected = useCallback(() => {
     if (!canWrite || !selectedPhotoIds.length) return;
@@ -212,6 +232,16 @@ export function PhotoLibrary() {
   };
 
   useEffect(() => () => clearClickTimer(), []);
+
+  useEffect(() => {
+    const el = workAreaRef.current;
+    if (!el) return;
+    const update = () => setWorkAreaWidth(Math.floor(el.clientWidth));
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    update();
+    return () => ro.disconnect();
+  }, [emptyLibrary]);
 
   const selectItem = (item: FeedItem, event: React.MouseEvent) => {
     const id = itemId(item);
@@ -431,16 +461,26 @@ export function PhotoLibrary() {
           Bilder hierher ziehen oder klicken, um Dateien zu wählen
         </button>
       ) : (
-        <div className="min-h-0 flex-1 overflow-auto">
+        <div ref={workAreaRef} className="min-h-0 flex-1 overflow-auto">
         {visible.length === 0 ? (
           <p className="rounded-xl border border-[var(--edit-line)] bg-[var(--edit-panel)] p-6 text-sm text-[var(--edit-muted)]">
             Keine Einträge zu diesem Filter.
           </p>
         ) : (
-        <div className="grid select-none grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+        <div
+          className="grid select-none"
+          style={{
+            gap: LIBRARY_GAP_PX,
+            gridTemplateColumns:
+              workAreaWidth > 0
+                ? `repeat(${libraryColumns}, minmax(0, 1fr))`
+                : `repeat(auto-fill, minmax(0, ${Math.min(maxTile, THUMB_MAX_EDGE)}px))`,
+          }}
+        >
           {visible.map((item) => {
             const id = itemId(item);
             const selected = selectedPhotoIds.includes(id);
+            const native = item.type === "photo" ? thumbNativeSize(item.photo) : { width: THUMB_MAX_EDGE, height: THUMB_MAX_EDGE };
             return (
               <button
                 key={`${item.type}-${id}`}
@@ -527,14 +567,17 @@ export function PhotoLibrary() {
                 ) : null}
                 {item.type === "photo" ? (
                   <>
-                    <div className="aspect-square bg-[#ddd8d0]">
+                    <div className="flex aspect-square items-center justify-center bg-[#ddd8d0]">
                       {thumbUrls[item.photo.id] ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img
                           src={thumbUrls[item.photo.id]}
                           alt={item.photo.title || item.photo.originalName}
                           draggable={false}
-                          className="pointer-events-none h-full w-full object-cover"
+                          width={native.width}
+                          height={native.height}
+                          className="pointer-events-none max-h-full max-w-full object-contain"
+                          style={{ maxWidth: native.width, maxHeight: native.height }}
                         />
                       ) : null}
                     </div>

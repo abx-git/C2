@@ -34,7 +34,7 @@ async function canvasToBlob(canvas: HTMLCanvasElement, mime: string, quality: nu
   throw new Error("Bild konnte nicht kodiert werden");
 }
 
-function fit(width: number, height: number, maxEdge: number): { width: number; height: number } {
+export function fitMaxEdge(width: number, height: number, maxEdge: number): { width: number; height: number } {
   const edge = Math.max(width, height);
   if (edge <= maxEdge) return { width, height };
   const scale = maxEdge / edge;
@@ -45,7 +45,7 @@ function fit(width: number, height: number, maxEdge: number): { width: number; h
 }
 
 async function encodeVariant(bitmap: ImageBitmap, maxEdge: number): Promise<{ blob: Blob; width: number; height: number }> {
-  const size = fit(bitmap.width, bitmap.height, maxEdge);
+  const size = fitMaxEdge(bitmap.width, bitmap.height, maxEdge);
   const canvas = document.createElement("canvas");
   canvas.width = size.width;
   canvas.height = size.height;

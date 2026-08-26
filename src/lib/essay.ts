@@ -86,7 +86,10 @@ function packFillCount(photos: Photo[], start: number, containerWidth: number, l
     const withNext = photos.slice(start, start + count + 1);
     if (fillHeight(withNext, containerWidth, layout.gap) < layout.rowMinHeight) break;
     count += 1;
-    if (fillHeight(photos.slice(start, start + count), containerWidth, layout.gap) <= layout.rowMaxHeight) {
+    const slice = photos.slice(start, start + count);
+    const fillH = fillHeight(slice, containerWidth, layout.gap);
+    const maxH = Math.min(nativeRowHeight(slice), layout.rowMaxHeight);
+    if (fillH <= maxH) {
       break;
     }
   }
