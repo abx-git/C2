@@ -508,28 +508,53 @@ function CoverPicker({
   onChange: (cover: string | undefined) => void;
 }) {
   const thumbUrls = useEditorStore((s) => s.thumbUrls);
-  const selected = value ? photos.find((photo) => photo.id === value) : undefined;
-  const preview = selected ? thumbUrls[selected.id] : "";
+  if (!photos.length) {
+    return <p className="mt-3 text-xs text-[var(--edit-muted)]">Index-Bild: keine Bilder in dieser Auswahl.</p>;
+  }
   return (
-    <label className="mt-3 flex flex-wrap items-center gap-2 text-xs text-[var(--edit-muted)]">
-      Index-Bild
-      {preview ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={preview} alt="" className="h-9 w-9 rounded object-cover" />
-      ) : null}
-      <select
-        className="edit-field max-w-xs py-1"
-        value={value ?? ""}
-        onChange={(event) => onChange(event.target.value || undefined)}
-      >
-        <option value="">{emptyLabel}</option>
-        {photos.map((photo) => (
-          <option key={photo.id} value={photo.id}>
-            {photo.title.trim() || photo.originalName}
-          </option>
-        ))}
-      </select>
-    </label>
+    <div className="mt-3">
+      <div className="mb-1.5 text-xs text-[var(--edit-muted)]">Index-Bild — anklicken</div>
+      <div className="flex max-h-40 flex-wrap content-start gap-1 overflow-auto">
+        <button
+          type="button"
+          title={emptyLabel}
+          aria-label={emptyLabel}
+          aria-pressed={!value}
+          onClick={() => onChange(undefined)}
+          className={`flex h-14 w-14 shrink-0 items-center justify-center rounded border px-1 text-center text-[0.65rem] leading-tight ${
+            !value
+              ? "border-[var(--edit-ink)] bg-[var(--edit-ink)] text-[#f7f5f1]"
+              : "border-[var(--edit-line)] text-[var(--edit-muted)]"
+          }`}
+        >
+          Auto
+        </button>
+        {photos.map((photo) => {
+          const on = value === photo.id;
+          const src = thumbUrls[photo.id];
+          return (
+            <button
+              key={photo.id}
+              type="button"
+              title={photo.title.trim() || photo.originalName}
+              aria-label={photo.title.trim() || photo.originalName}
+              aria-pressed={on}
+              onClick={() => onChange(on ? undefined : photo.id)}
+              className={`relative h-14 w-14 shrink-0 overflow-hidden rounded border ${
+                on ? "border-[var(--edit-ink)] ring-1 ring-[var(--edit-ink)]" : "border-transparent"
+              }`}
+            >
+              {src ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={src} alt="" className="pointer-events-none h-full w-full object-cover" />
+              ) : (
+                <span className="block h-full w-full bg-[#ddd8d0]" />
+              )}
+            </button>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
