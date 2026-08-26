@@ -10,6 +10,7 @@ type LightboxProps = {
   onClose: () => void;
   onIndex: (index: number) => void;
   playing?: boolean;
+  onPlaying?: (playing: boolean) => void;
   intervalMs?: number;
   sidebar?: React.ReactNode;
   enterFullscreen?: boolean;
@@ -45,6 +46,7 @@ export function Lightbox({
   onClose,
   onIndex,
   playing = false,
+  onPlaying,
   intervalMs = 5000,
   sidebar,
   enterFullscreen = false,
@@ -60,6 +62,10 @@ export function Lightbox({
   onIndexRef.current = onIndex;
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
+  const playingRef = useRef(playing);
+  playingRef.current = playing;
+  const onPlayingRef = useRef(onPlaying);
+  onPlayingRef.current = onPlaying;
 
   const go = useCallback((delta: number) => {
     const count = photos.length;
@@ -73,6 +79,11 @@ export function Lightbox({
     if (fullscreenElement() === el) void exitFullscreen();
     else void requestFullscreen(el);
   }, []);
+
+  const togglePlay = useCallback(() => {
+    if (photos.length < 2) return;
+    onPlayingRef.current?.(!playingRef.current);
+  }, [photos.length]);
 
   useEffect(() => {
     if (!playing || photos.length < 2) return;
@@ -115,13 +126,17 @@ export function Lightbox({
         if (fullscreenElement()) return;
         onCloseRef.current();
       }
+      if (event.key === " " || event.key === "Spacebar") {
+        event.preventDefault();
+        togglePlay();
+      }
       if (event.key === "f" || event.key === "F") toggleFullscreen();
       if (event.key === "ArrowLeft") go(-1);
       if (event.key === "ArrowRight") go(1);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [go, toggleFullscreen]);
+  }, [go, toggleFullscreen, togglePlay]);
 
   if (!photo) return null;
 
@@ -151,6 +166,40 @@ export function Lightbox({
           />
         </svg>
       </button>
+      <div className="g-lightbox-tools">
+      {photos.length > 1 && onPlaying ? (
+        <button
+          type="button"
+          className="g-lightbox-play"
+          onClick={togglePlay}
+          title={playing ? "Diashow anhalten (Leertaste)" : "Diashow starten (Leertaste)"}
+          aria-label={playing ? "Diashow anhalten" : "Diashow starten"}
+          aria-pressed={playing}
+        >
+          {playing ? (
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path
+                d="M8 6h2.4v12H8zM13.6 6H16v12h-2.4z"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.2"
+                strokeLinejoin="round"
+              />
+            </svg>
+          ) : (
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path
+                d="M8 6.2v11.6L18.5 12z"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          )}
+        </button>
+      ) : null}
       {canFullscreen ? (
         <button
           type="button"
@@ -185,6 +234,7 @@ export function Lightbox({
           )}
         </button>
       ) : null}
+      </div>
       {photos.length > 1 ? (
         <button type="button" className="g-lightbox-nav prev" onClick={() => go(-1)} aria-label="Vorheriges Bild">
           ‹

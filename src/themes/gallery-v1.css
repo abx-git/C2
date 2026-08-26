@@ -486,6 +486,7 @@
 
 .theme-gallery-v1 .g-lightbox-nav,
 .theme-gallery-v1 .g-lightbox-back,
+.theme-gallery-v1 .g-lightbox-play,
 .theme-gallery-v1 .g-lightbox-full {
   position: absolute;
   background: transparent;
@@ -499,6 +500,7 @@
 
 .theme-gallery-v1 .g-lightbox-nav:hover,
 .theme-gallery-v1 .g-lightbox-back:hover,
+.theme-gallery-v1 .g-lightbox-play:hover,
 .theme-gallery-v1 .g-lightbox-full:hover {
   opacity: 1;
 }
@@ -524,16 +526,29 @@
 }
 
 .theme-gallery-v1 .g-lightbox-back svg,
+.theme-gallery-v1 .g-lightbox-play svg,
 .theme-gallery-v1 .g-lightbox-full svg {
   display: block;
   width: 1.35rem;
   height: 1.35rem;
 }
 
-.theme-gallery-v1 .g-lightbox-full {
+.theme-gallery-v1 .g-lightbox-tools {
+  position: absolute;
   top: 0.55rem;
   right: 0.55rem;
   z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 0.1rem;
+}
+
+.theme-gallery-v1 .g-lightbox-play,
+.theme-gallery-v1 .g-lightbox-full {
+  position: relative;
+  top: auto;
+  right: auto;
+  padding: 0.45rem;
 }
 
 .theme-gallery-v1 .g-lightbox:fullscreen,

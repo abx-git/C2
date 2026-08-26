@@ -11,3 +11,14 @@ sync:
       vcs: true
       paths:
         - ".DS_Store"
+  c2-gallery-private:
+    alpha: "~/c2-private"
+    beta: "HOST:httpdocs/pictures-private"
+    mode: "one-way-replica"
+    permissions:
+      defaultFileMode: 0644
+      defaultDirectoryMode: 0755
+    ignore:
+      vcs: true
+      paths:
+        - ".DS_Store"

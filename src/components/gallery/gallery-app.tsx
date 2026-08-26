@@ -193,14 +193,12 @@ export function GalleryApp({ catalog, resolveUrl, className }: GalleryAppProps) 
 
   const startSlideshow = () => {
     if (!photos.length) return;
-    setWantFullscreen(false);
     setSlideshow(true);
     setLightbox(0);
   };
 
   const startFullscreen = () => {
     if (!photos.length) return;
-    setSlideshow(false);
     setWantFullscreen(true);
     setLightbox(lightbox ?? 0);
   };
@@ -349,6 +347,7 @@ export function GalleryApp({ catalog, resolveUrl, className }: GalleryAppProps) 
           onClose={closeLightbox}
           onIndex={setLightbox}
           playing={slideshow}
+          onPlaying={setSlideshow}
           intervalMs={intervalMs}
           enterFullscreen={wantFullscreen}
         />
