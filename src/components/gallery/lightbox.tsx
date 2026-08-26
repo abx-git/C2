@@ -54,13 +54,18 @@ export function Lightbox({
   const [fullscreen, setFullscreen] = useState(false);
   const canFullscreen = typeof document !== "undefined" && fullscreenEnabled();
 
-  const go = useCallback(
-    (delta: number) => {
-      if (!photos.length) return;
-      onIndex((index + delta + photos.length) % photos.length);
-    },
-    [index, onIndex, photos.length],
-  );
+  const indexRef = useRef(index);
+  indexRef.current = index;
+  const onIndexRef = useRef(onIndex);
+  onIndexRef.current = onIndex;
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
+  const go = useCallback((delta: number) => {
+    const count = photos.length;
+    if (!count) return;
+    onIndexRef.current((indexRef.current + delta + count) % count);
+  }, [photos.length]);
 
   const toggleFullscreen = useCallback(() => {
     const el = rootRef.current;
@@ -93,27 +98,30 @@ export function Lightbox({
   }, [enterFullscreen, canFullscreen]);
 
   useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+      if (fullscreenElement() === rootRef.current) void exitFullscreen();
+    };
+  }, []);
+
+  useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
       const tag = target?.tagName;
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || target?.isContentEditable) return;
       if (event.key === "Escape") {
         if (fullscreenElement()) return;
-        onClose();
+        onCloseRef.current();
       }
       if (event.key === "f" || event.key === "F") toggleFullscreen();
       if (event.key === "ArrowLeft") go(-1);
       if (event.key === "ArrowRight") go(1);
     };
     window.addEventListener("keydown", onKey);
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      window.removeEventListener("keydown", onKey);
-      document.body.style.overflow = prev;
-      if (fullscreenElement() === rootRef.current) void exitFullscreen();
-    };
-  }, [go, onClose, toggleFullscreen]);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [go, toggleFullscreen]);
 
   if (!photo) return null;
 
