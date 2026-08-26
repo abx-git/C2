@@ -6,6 +6,7 @@ import {
   DEFAULT_LAYOUT,
   hasCatalogTag,
   isPublishTag,
+  PHOTO_RATING_MAX,
   type FeedItem,
   type Photo,
 } from "@/lib/catalog";
@@ -79,6 +80,7 @@ export function PhotoLibrary() {
   const [dropAfter, setDropAfter] = useState(false);
   const [filter, setFilter] = useState<Record<string, FilterMode>>({});
   const [untaggedFilter, setUntaggedFilter] = useState<FilterMode | null>(null);
+  const [ratingFilter, setRatingFilter] = useState<Set<number>>(() => new Set());
   const [query, setQuery] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
   const reordering = useRef(false);
@@ -104,6 +106,15 @@ export function PhotoLibrary() {
     });
   };
 
+  const toggleRating = (rating: number) => {
+    setRatingFilter((current) => {
+      const next = new Set(current);
+      if (next.has(rating)) next.delete(rating);
+      else next.add(rating);
+      return next;
+    });
+  };
+
   const visible = useMemo(() => {
     const include = Object.entries(filter)
       .filter(([, mode]) => mode === "include")
@@ -122,13 +133,16 @@ export function PhotoLibrary() {
     } else if (untaggedFilter === "exclude") {
       items = items.filter((item) => itemEntity(item).tags.length > 0);
     }
+    if (ratingFilter.size) {
+      items = items.filter((item) => item.type === "photo" && ratingFilter.has(item.photo.rating ?? 0));
+    }
     if (query.trim()) items = items.filter((item) => matchesQuery(item, query));
     return items;
-  }, [filter, untaggedFilter, query, catalog, tags]);
+  }, [filter, untaggedFilter, ratingFilter, query, catalog, tags]);
 
   const visibleIds = visible.map(itemId);
   const visiblePhotos = visible.flatMap((item) => (item.type === "photo" ? [item.photo] : []));
-  const tagFilterActive = Object.keys(filter).length > 0 || untaggedFilter != null;
+  const tagFilterActive = Object.keys(filter).length > 0 || untaggedFilter != null || ratingFilter.size > 0;
   const queryActive = query.trim().length > 0;
   const filterActive = tagFilterActive || queryActive;
   const previewPhotos = visiblePhotos.length ? visiblePhotos : photos;
@@ -309,6 +323,7 @@ export function PhotoLibrary() {
             onClick={() => {
               setFilter({});
               setUntaggedFilter(null);
+              setRatingFilter(new Set());
               setQuery("");
             }}
           >
@@ -334,6 +349,33 @@ export function PhotoLibrary() {
           >
             {untaggedFilter === "exclude" ? "mit Tags" : "keine Tags gesetzt"}
           </button>
+          {Array.from({ length: PHOTO_RATING_MAX + 1 }, (_, rating) => {
+            const on = ratingFilter.has(rating);
+            const label = rating === 0 ? "keine Sterne" : "★".repeat(rating);
+            return (
+              <button
+                key={`rating-${rating}`}
+                type="button"
+                title={
+                  rating === 0
+                    ? on
+                      ? "Keine-Sterne-Filter lösen"
+                      : "Nur Bilder ohne Sterne"
+                    : on
+                      ? "Stern-Filter lösen"
+                      : `Nur ${rating} Stern${rating === 1 ? "" : "e"}`
+                }
+                className={`rounded-full border px-2 py-0.5 text-xs ${
+                  on
+                    ? "border-[var(--edit-ink)] bg-[var(--edit-ink)] text-[#f7f5f1]"
+                    : "border-[var(--edit-line)] bg-[var(--edit-panel)]"
+                }`}
+                onClick={() => toggleRating(rating)}
+              >
+                {label}
+              </button>
+            );
+          })}
           {[...tags].sort((a, b) => Number(isPublishTag(b)) - Number(isPublishTag(a))).map((tag) => {
             const mode = filter[tag.id];
             return (
