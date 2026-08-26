@@ -110,6 +110,7 @@ export function GalleryApp({ catalog, resolveUrl, className }: GalleryAppProps) 
   const [pageId, setPageId] = useState(leafPages[0]?.id ?? "work");
   const [lightbox, setLightbox] = useState<number | null>(null);
   const [slideshow, setSlideshow] = useState(false);
+  const [wantFullscreen, setWantFullscreen] = useState(false);
   const stageRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
 
@@ -174,6 +175,7 @@ export function GalleryApp({ catalog, resolveUrl, className }: GalleryAppProps) 
   const selectPage = (id: string) => {
     setLightbox(null);
     setSlideshow(false);
+    setWantFullscreen(false);
     setPageId(id);
     if (window.location.hash !== `#${id}`) {
       window.history.replaceState(null, "", `#${id}`);
@@ -184,18 +186,28 @@ export function GalleryApp({ catalog, resolveUrl, className }: GalleryAppProps) 
     const index = photos.findIndex((p) => p.id === photo.id);
     if (index >= 0) {
       setSlideshow(false);
+      setWantFullscreen(false);
       setLightbox(index);
     }
   };
 
   const startSlideshow = () => {
     if (!photos.length) return;
+    setWantFullscreen(false);
     setSlideshow(true);
     setLightbox(0);
   };
 
+  const startFullscreen = () => {
+    if (!photos.length) return;
+    setSlideshow(false);
+    setWantFullscreen(true);
+    setLightbox(lightbox ?? 0);
+  };
+
   const closeLightbox = () => {
     setSlideshow(false);
+    setWantFullscreen(false);
     setLightbox(null);
   };
 
@@ -219,6 +231,7 @@ export function GalleryApp({ catalog, resolveUrl, className }: GalleryAppProps) 
       <div className="g-essay-head">
         {heading ? <h1 className="g-essay-title">{heading}</h1> : <div className="g-essay-title" aria-hidden="true" />}
         {gallery && photos.length > 0 ? (
+          <div className="g-essay-actions">
           <button
             type="button"
             className="g-slideshow"
@@ -237,6 +250,25 @@ export function GalleryApp({ catalog, resolveUrl, className }: GalleryAppProps) 
               />
             </svg>
           </button>
+          <button
+            type="button"
+            className="g-slideshow"
+            onClick={startFullscreen}
+            title="Vollbild"
+            aria-label="Vollbild"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path
+                d="M8 5H5v4M16 5h3v4M8 19H5v-4M16 19h3v-4"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </button>
+          </div>
         ) : null}
       </div>
 
@@ -318,6 +350,7 @@ export function GalleryApp({ catalog, resolveUrl, className }: GalleryAppProps) 
           onIndex={setLightbox}
           playing={slideshow}
           intervalMs={intervalMs}
+          enterFullscreen={wantFullscreen}
         />
       ) : null}
       </div>
