@@ -17,3 +17,4 @@ npm-debug.log*
 **/gallery-secret.json
 *.tsbuildinfo
 .cursor/
+mutagen.yml

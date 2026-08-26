@@ -1,0 +1,13 @@
+# Kopie nach mutagen.yml, HOST und Pfade anpassen, dann: mutagen daemon start && mutagen project start
+sync:
+  c2-gallery:
+    alpha: "~/c2-deploy"
+    beta: "HOST:httpdocs/galerie"
+    mode: "one-way-safe"
+    permissions:
+      defaultFileMode: 0644
+      defaultDirectoryMode: 0755
+    ignore:
+      vcs: true
+      paths:
+        - ".DS_Store"

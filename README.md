@@ -12,41 +12,42 @@ Lokale Fotogalerie. Katalog und Originale bleiben auf dem Rechner.
 
 C2 schreibt nur einen lokalen Ordner. Die Übertragung macht Mutagen. Den Snapshot in ein **eigenes** Remote-Verzeichnis legen, nicht ins Webroot einer anderen Site.
 
-Voraussetzungen: SSH-Host in `~/.ssh/config` (unten `HOST`), Mutagen installiert.
+### 1. Konfiguration
+
+SSH-Host in `~/.ssh/config` eintragen. Mutagen installieren, falls nötig: `brew install mutagen-io/mutagen/mutagen`.
+
+Vorlage kopieren und **Alpha** (lokaler Deploy-Ordner) sowie **Beta** (`SSH-Alias:Remote-Pfad`) setzen:
 
 ```bash
-brew install mutagen-io/mutagen/mutagen   # falls nötig
-mutagen daemon start
-ssh -o BatchMode=yes HOST 'echo ok'
+cp mutagen.yml.example mutagen.yml
 ```
 
-Einmalig Session anlegen. **Alpha** ist der Ordner, den du in C2 als Deploy-Ordner wählst. **Beta** ist der Zielpfad auf dem Server:
+`one-way-safe` löscht auf dem Server nichts extra. Soll der Server exakt dem Deploy-Ordner entsprechen, in der YAML `mode: "one-way-replica"` — nur in diesem Galerie-Ordner.
+
+Ordner anlegen, die in der YAML stehen:
 
 ```bash
 mkdir -p ~/c2-deploy
 ssh HOST 'mkdir -p httpdocs/galerie'
-
-mutagen sync create \
-  --name c2-gallery \
-  --sync-mode one-way-safe \
-  --ignore VCS \
-  --ignore '.DS_Store' \
-  --default-file-mode-beta 0644 \
-  --default-directory-mode-beta 0755 \
-  ~/c2-deploy \
-  HOST:httpdocs/galerie
+ssh -o BatchMode=yes HOST 'echo ok'
 ```
 
-`HOST` und den Remote-Pfad durch SSH-Alias und Zielverzeichnis ersetzen.
+`mutagen.yml` ist gitignoriert (lokale Hostnamen).
 
-`one-way-safe` löscht auf dem Server nichts extra. Soll der Server exakt dem Deploy-Ordner entsprechen: `--sync-mode one-way-replica` — nur in diesem Galerie-Ordner.
-
-Alltag: in C2 immer in denselben Deploy-Ordner schreiben, dann:
+### 2. Start
 
 ```bash
-mutagen sync list
-mutagen sync flush c2-gallery
-mutagen sync monitor c2-gallery
+mutagen daemon start
+mutagen project start
 ```
 
-Die Session bleibt bestehen; nach dem Login bei Bedarf `mutagen daemon start`.
+### 3. Alltag
+
+In C2 immer in denselben Deploy-Ordner schreiben, dann:
+
+```bash
+mutagen project list
+mutagen project flush
+```
+
+Nach dem Login bei Bedarf nur `mutagen daemon start` — die Session bleibt in der Konfiguration.
