@@ -6,17 +6,16 @@ import {
   catalogFeed,
   clampSlideshowInterval,
   clampFadeInDuration,
+  coverPhoto,
   galleryThemeStyle,
-  filterPhotos,
-  flattenGalleryPages,
   flattenLeafPages,
   navPages,
+  workIndexTiles,
   type Catalog,
   type LeafPage,
   type Photo,
   type SitePage,
 } from "@/lib/catalog";
-import { appBase } from "@/lib/app-base";
 import { layoutEssayFeed } from "@/lib/essay";
 import { ContactForm } from "./contact-form";
 import { Lightbox } from "./lightbox";
@@ -83,30 +82,21 @@ function WorkIndex({
   resolveUrl: (photo: Photo, kind: "thumb" | "display") => string;
   onOpen: (id: string) => void;
 }) {
-  const series = flattenGalleryPages(navPages(pages));
+  const tiles = workIndexTiles(pages);
   return (
     <div className="g-work">
       <p className="g-work-intro">my views</p>
-      {series.map((page) => {
-        const published = filterPhotos(photos, page.filter, tags);
-        if (!published.length) return null;
-        const first = published[0];
-        const src = first
-          ? resolveUrl(first, "display")
-          : page.cover
-            ? `${appBase()}/${page.cover}`
-            : "";
+      {tiles.map(({ page, openId }) => {
+        const photo = coverPhoto(page, photos, tags);
+        if (!photo) return null;
+        const year = page.type === "gallery" ? page.year : undefined;
         return (
-          <button key={page.id} type="button" className="g-work-tile" onClick={() => onOpen(page.id)}>
-            {src ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={src} alt="" draggable={false} />
-            ) : (
-              <span className="g-work-fallback" />
-            )}
+          <button key={page.id} type="button" className="g-work-tile" onClick={() => onOpen(openId)}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={resolveUrl(photo, "display")} alt="" draggable={false} />
             <span className="g-work-meta">
               <span>{page.title}</span>
-              {page.year ? <span>{page.year}</span> : null}
+              {year ? <span>{year}</span> : null}
             </span>
           </button>
         );

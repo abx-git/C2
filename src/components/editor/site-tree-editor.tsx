@@ -11,10 +11,13 @@ import {
   SLIDESHOW_INTERVAL_MIN,
   isPublishTag,
   pageVisibility,
+  photosForCover,
   type GalleryPage,
   type GroupPage,
   type PageVisibility,
+  type Photo,
   type SitePage,
+  type Tag,
 } from "@/lib/catalog";
 import { LayoutColumnsPicker } from "@/components/editor/layout-columns-picker";
 import { useEditorStore } from "@/store/editor-store";
@@ -26,6 +29,7 @@ function isGallery(page: SitePage): page is GalleryPage {
 export function SiteTreeEditor() {
   const site = useEditorStore((s) => s.catalog.site);
   const tags = useEditorStore((s) => s.catalog.tags.tags);
+  const photos = useEditorStore((s) => s.catalog.photos.photos);
   const updateSite = useEditorStore((s) => s.updateSite);
   const galleryPassword = useEditorStore((s) => s.galleryPassword);
   const setGalleryPassword = useEditorStore((s) => s.setGalleryPassword);
@@ -38,8 +42,9 @@ export function SiteTreeEditor() {
       <h2 className="mb-3 text-sm font-medium">Seitenstruktur</h2>
       <p className="mb-4 text-sm text-[var(--edit-muted)]">
         Die Navigation folgt diesem Baum. Pro Galerie-Seite genau ein Tag: dann erscheinen nur Bilder mit diesem Tag.
-        „Alle“ zeigt die ganze Sammlung. Sichtbarkeit: öffentlich in der Navigation, eingeschränkt nur per Link,
-        privat nur im Editor. Eine Gruppe vererbt die strengere Stufe an ihre Seiten.
+        „Alle“ zeigt die ganze Sammlung. Das Index-Bild erscheint auf der Work-Übersicht. Sichtbarkeit: öffentlich in der
+        Navigation, eingeschränkt nur per Link, privat nur im Editor. Eine Gruppe vererbt die strengere Stufe an ihre
+        Seiten.
       </p>
       <label className="mb-3 block text-xs text-[var(--edit-muted)]">
         Titel der Sammlung
@@ -68,7 +73,7 @@ export function SiteTreeEditor() {
         onProtection={(next) => updateSite({ ...site, protection: next })}
         onPassword={setGalleryPassword}
       />
-      <PageList pages={site.pages} tags={tags} onChange={setPages} depth={0} />
+      <PageList pages={site.pages} tags={tags} photos={photos} onChange={setPages} depth={0} />
       <div className="mt-4 flex gap-2">
         <button
           type="button"
@@ -306,11 +311,13 @@ function ProtectionFields({
 function PageList({
   pages,
   tags,
+  photos,
   onChange,
   depth,
 }: {
   pages: SitePage[];
-  tags: { id: string; name: string }[];
+  tags: Tag[];
+  photos: Photo[];
   onChange: (pages: SitePage[]) => void;
   depth: number;
 }) {
@@ -375,6 +382,7 @@ function PageList({
             </button>
           </div>
           {isGallery(page) ? (
+            <>
             <div className="mt-3 flex flex-wrap items-center gap-1.5">
               <label className="mr-2 text-xs text-[var(--edit-muted)]">
                 Jahr
@@ -428,11 +436,33 @@ function PageList({
                 })
               )}
             </div>
+            <CoverPicker
+              value={page.cover}
+              photos={photosForCover(page, photos, tags)}
+              emptyLabel="Automatisch (erstes Bild)"
+              onChange={(cover) => {
+                const next = [...pages];
+                next[index] = { ...page, cover };
+                onChange(next);
+              }}
+            />
+            </>
           ) : page.type === "group" ? (
             <div className="mt-3">
+              <CoverPicker
+                value={page.cover}
+                photos={photosForCover(page, photos, tags)}
+                emptyLabel="Automatisch (Seiten einzeln)"
+                onChange={(cover) => {
+                  const next = [...pages];
+                  next[index] = { ...page, cover };
+                  onChange(next);
+                }}
+              />
               <PageList
                 pages={page.children}
                 tags={tags}
+                photos={photos}
                 depth={depth + 1}
                 onChange={(children) => {
                   const next = [...pages];
@@ -463,6 +493,43 @@ function PageList({
         </li>
       ))}
     </ul>
+  );
+}
+
+function CoverPicker({
+  value,
+  photos,
+  emptyLabel,
+  onChange,
+}: {
+  value?: string;
+  photos: Photo[];
+  emptyLabel: string;
+  onChange: (cover: string | undefined) => void;
+}) {
+  const thumbUrls = useEditorStore((s) => s.thumbUrls);
+  const selected = value ? photos.find((photo) => photo.id === value) : undefined;
+  const preview = selected ? thumbUrls[selected.id] : "";
+  return (
+    <label className="mt-3 flex flex-wrap items-center gap-2 text-xs text-[var(--edit-muted)]">
+      Index-Bild
+      {preview ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={preview} alt="" className="h-9 w-9 rounded object-cover" />
+      ) : null}
+      <select
+        className="edit-field max-w-xs py-1"
+        value={value ?? ""}
+        onChange={(event) => onChange(event.target.value || undefined)}
+      >
+        <option value="">{emptyLabel}</option>
+        {photos.map((photo) => (
+          <option key={photo.id} value={photo.id}>
+            {photo.title.trim() || photo.originalName}
+          </option>
+        ))}
+      </select>
+    </label>
   );
 }
 

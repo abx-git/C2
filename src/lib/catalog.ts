@@ -105,6 +105,7 @@ type PageBase = {
 export type GalleryPage = PageBase & {
   type: "gallery";
   year?: string;
+  /** Foto-ID für die Work-Übersicht */
   cover?: string;
   filter: GalleryFilter;
 };
@@ -120,6 +121,8 @@ export type ContactPage = PageBase & {
 export type GroupPage = PageBase & {
   type: "group";
   children: SitePage[];
+  /** Foto-ID für die Work-Übersicht */
+  cover?: string;
 };
 
 export type LeafPage = GalleryPage | WorkPage | ContactPage;
@@ -547,7 +550,8 @@ function parsePage(raw: unknown): SitePage | null {
     const children = Array.isArray(raw.children)
       ? raw.children.map(parsePage).filter((p): p is SitePage => p !== null)
       : [];
-    return { id, type: "group", title, visibility, children };
+    const cover = typeof raw.cover === "string" && raw.cover.trim() ? raw.cover.trim() : undefined;
+    return { id, type: "group", title, visibility, children, cover };
   }
   if (raw.type === "work") return { id, type: "work", title, visibility };
   if (raw.type === "contact") return { id, type: "contact", title, visibility };
@@ -687,6 +691,68 @@ export function flattenGalleryPages(pages: SitePage[]): GalleryPage[] {
     if (page.type === "gallery") out.push(page);
     else if (page.type === "group") out.push(...flattenGalleryPages(page.children));
   }
+  return out;
+}
+
+export function firstGalleryPage(page: SitePage): GalleryPage | null {
+  if (page.type === "gallery") return page;
+  if (page.type === "group") {
+    for (const child of page.children) {
+      const found = firstGalleryPage(child);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
+/** Bilder, aus denen ein Index-Bild gewählt werden kann. */
+export function photosForCover(page: GalleryPage | GroupPage, photos: Photo[], tags: Tag[]): Photo[] {
+  if (page.type === "gallery") return filterPhotos(photos, page.filter, tags);
+  const seen = new Set<string>();
+  const out: Photo[] = [];
+  for (const gallery of flattenGalleryPages([page])) {
+    for (const photo of filterPhotos(photos, gallery.filter, tags)) {
+      if (seen.has(photo.id)) continue;
+      seen.add(photo.id);
+      out.push(photo);
+    }
+  }
+  return out.length ? out : photos;
+}
+
+export function coverPhoto(page: GalleryPage | GroupPage, photos: Photo[], tags: Tag[]): Photo | undefined {
+  const pool = photosForCover(page, photos, tags);
+  if (page.cover) {
+    const chosen = photos.find((photo) => photo.id === page.cover) ?? pool.find((item) => item.id === page.cover);
+    if (chosen) return chosen;
+  }
+  return pool[0];
+}
+
+export type WorkIndexTile = {
+  page: GalleryPage | GroupPage;
+  openId: string;
+};
+
+/** Work-Kacheln: Gruppe mit Index-Bild als eine Kachel, sonst Kinder einzeln. */
+export function workIndexTiles(pages: SitePage[]): WorkIndexTile[] {
+  const out: WorkIndexTile[] = [];
+  const walk = (items: SitePage[]) => {
+    for (const page of items) {
+      if (page.type === "gallery") {
+        out.push({ page, openId: page.id });
+        continue;
+      }
+      if (page.type !== "group") continue;
+      if (page.cover) {
+        const first = firstGalleryPage(page);
+        if (first) out.push({ page, openId: first.id });
+        continue;
+      }
+      walk(page.children);
+    }
+  };
+  walk(navPages(pages));
   return out;
 }
 
