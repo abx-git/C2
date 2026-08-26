@@ -10,27 +10,65 @@ import { rewriteAssetPaths } from "./deploy-paths";
 import { createCryptoParams, encryptBytes, stampWatermark } from "./image-protect";
 import {
   copyDirectoryHandle,
-  emptyDirectory,
+  ensureDirPath,
+  fileSizeInDir,
   listRelativeFiles,
   readBinaryFile,
   readTextFile,
+  removeMissingNames,
+  runPool,
   writeBinaryFile,
+  writeFileInDir,
   writeJsonFile,
   writeTextFile,
+  getDirectoryAtPath,
 } from "./workspace";
 
 export type DeployResult = {
   photoCount: number;
+  skipped: number;
   copiedApp: boolean;
   appSource: "origin" | "folder" | "none";
   encrypted: boolean;
   watermarked: boolean;
 };
 
+export type DeployProgress = {
+  current: number;
+  total: number;
+  skipped: number;
+};
+
 type Manifest = {
   files?: string[];
   base?: string;
 };
+
+function fileName(path: string): string {
+  return path.replace(/\\/g, "/").split("/").pop() ?? path;
+}
+
+async function folderFile(folder: FileSystemDirectoryHandle, name: string): Promise<File | null> {
+  try {
+    return await (await folder.getFileHandle(name)).getFile();
+  } catch {
+    return null;
+  }
+}
+
+async function writeIfChanged(
+  folder: FileSystemDirectoryHandle,
+  name: string,
+  data: BufferSource | Blob,
+  skipIfSize?: number,
+): Promise<boolean> {
+  if (skipIfSize != null) {
+    const existing = await fileSizeInDir(folder, name);
+    if (existing === skipIfSize) return false;
+  }
+  await writeFileInDir(folder, name, data);
+  return true;
+}
 
 function skipDeployPath(path: string): boolean {
   return (
@@ -75,12 +113,12 @@ async function copyAppFromOrigin(dest: FileSystemDirectoryHandle, originBase: st
   }
   const files = manifest?.files ?? [];
   if (!files.length) return false;
-  for (const path of files) {
+  await runPool(files, 8, async (path) => {
     const fileRes = await fetch(`${fileBase}/${path}`);
-    if (!fileRes.ok) continue;
+    if (!fileRes.ok) return;
     const buf = await fileRes.arrayBuffer();
     await writeBinaryFile(dest, path, buf);
-  }
+  });
   await writeJsonFile(dest, "c2-static-manifest.json", { version: 1, files });
   return true;
 }
@@ -111,6 +149,7 @@ export async function writeDeployFolder(opts: {
   appFolder?: FileSystemDirectoryHandle | null;
   originBase?: string;
   password?: string;
+  onProgress?: (progress: DeployProgress) => void;
 }): Promise<DeployResult> {
   let copiedApp = false;
   let appSource: DeployResult["appSource"] = "none";
@@ -140,9 +179,6 @@ export async function writeDeployFolder(opts: {
     crypto = undefined;
   }
 
-  await emptyDirectory(opts.dest, "images/display");
-  await emptyDirectory(opts.dest, "images/thumbs");
-
   const publicCatalog = toPublicCatalog(opts.catalog);
   const encrypted = Boolean(key);
   const publicPhotos = toPublicPhotos(publicCatalog.photos, encrypted);
@@ -151,11 +187,14 @@ export async function writeDeployFolder(opts: {
     protection: publicProtection(protection, crypto),
   };
   const published = { ...publicCatalog, photos: publicPhotos, site: publicSite };
+  const photos = publicCatalog.photos.photos;
 
-  await writeJsonFile(opts.dest, "data/photos.json", publicPhotos);
-  await writeJsonFile(opts.dest, "data/tags.json", published.tags);
-  await writeJsonFile(opts.dest, "data/site.json", publicSite);
-  await writeJsonFile(opts.dest, "data/texts.json", published.texts);
+  await Promise.all([
+    writeJsonFile(opts.dest, "data/photos.json", publicPhotos),
+    writeJsonFile(opts.dest, "data/tags.json", published.tags),
+    writeJsonFile(opts.dest, "data/site.json", publicSite),
+    writeJsonFile(opts.dest, "data/texts.json", published.texts),
+  ]);
   const bootstrap = catalogBootstrapScript(published);
   await writeTextFile(opts.dest, "data/catalog.js", `${bootstrap}\n`);
   const indexHtml = await readTextFile(opts.dest, "index.html");
@@ -164,20 +203,61 @@ export async function writeDeployFolder(opts: {
   }
   await rewriteCopiedAppForFileOpen(opts.dest);
 
-  const mark = protection?.watermark ? watermarkLabel(protection, opts.catalog.site.title) : "";
-  for (const photo of publicCatalog.photos.photos) {
-    const files = publicPhotos.photos.find((item) => item.id === photo.id)?.files ?? photo.files;
-    const displayFile = await readBinaryFile(opts.workspace, photo.files.display);
-    const thumbFile = await readBinaryFile(opts.workspace, photo.files.thumb);
-    if (!displayFile || !thumbFile) throw new Error(`Datei fehlt: ${photo.originalName || photo.id}`);
-    const displayOut = await publishImage(displayFile, { watermark: mark || undefined, key });
-    const thumbOut = await publishImage(thumbFile, { key });
-    await writeBinaryFile(opts.dest, files.display, displayOut);
-    await writeBinaryFile(opts.dest, files.thumb, thumbOut);
+  const displayDir = await ensureDirPath(opts.dest, "images/display");
+  const thumbDir = await ensureDirPath(opts.dest, "images/thumbs");
+  const keepDisplay = new Set(publicPhotos.photos.map((photo) => fileName(photo.files.display)));
+  const keepThumb = new Set(publicPhotos.photos.map((photo) => fileName(photo.files.thumb)));
+  await Promise.all([removeMissingNames(displayDir, keepDisplay), removeMissingNames(thumbDir, keepThumb)]);
+
+  let srcDisplay: FileSystemDirectoryHandle | null = null;
+  let srcThumbs: FileSystemDirectoryHandle | null = null;
+  try {
+    srcDisplay = await getDirectoryAtPath(opts.workspace, "derived/display");
+  } catch {
+    srcDisplay = null;
+  }
+  try {
+    srcThumbs = await getDirectoryAtPath(opts.workspace, "derived/thumbs");
+  } catch {
+    srcThumbs = null;
   }
 
+  const mark = protection?.watermark ? watermarkLabel(protection, opts.catalog.site.title) : "";
+  const transform = Boolean(mark || key);
+  const publicById = new Map(publicPhotos.photos.map((photo) => [photo.id, photo]));
+  let done = 0;
+  let skipped = 0;
+  const total = photos.length;
+  opts.onProgress?.({ current: 0, total, skipped: 0 });
+
+  await runPool(photos, transform ? 3 : 8, async (photo) => {
+    const files = publicById.get(photo.id)?.files ?? photo.files;
+    const [displayFile, thumbFile] = await Promise.all([
+      srcDisplay
+        ? (await folderFile(srcDisplay, fileName(photo.files.display))) ?? readBinaryFile(opts.workspace, photo.files.display)
+        : readBinaryFile(opts.workspace, photo.files.display),
+      srcThumbs
+        ? (await folderFile(srcThumbs, fileName(photo.files.thumb))) ?? readBinaryFile(opts.workspace, photo.files.thumb)
+        : readBinaryFile(opts.workspace, photo.files.thumb),
+    ]);
+    if (!displayFile || !thumbFile) throw new Error(`Datei fehlt: ${photo.originalName || photo.id}`);
+    const [displayOut, thumbOut] = await Promise.all([
+      publishImage(displayFile, { watermark: mark || undefined, key }),
+      publishImage(thumbFile, { key }),
+    ]);
+    const [wroteDisplay, wroteThumb] = await Promise.all([
+      writeIfChanged(displayDir, fileName(files.display), displayOut, transform ? undefined : displayFile.size),
+      writeIfChanged(thumbDir, fileName(files.thumb), thumbOut, transform ? undefined : thumbFile.size),
+    ]);
+    done += 1;
+    if (!wroteDisplay && !wroteThumb) skipped += 1;
+    opts.onProgress?.({ current: done, total, skipped });
+    if (done % 4 === 0) await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+
   return {
-    photoCount: publicCatalog.photos.photos.length,
+    photoCount: total,
+    skipped,
     copiedApp,
     appSource,
     encrypted,

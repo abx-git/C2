@@ -37,9 +37,10 @@ import {
   readBinaryFile,
   readJsonFile,
   removeFile,
+  runPool,
   saveDirectoryHandle,
   supportsDirectoryPicker,
-  writeBinaryFile,
+  writeFileInDir,
   writeJsonFile,
 } from "@/lib/workspace";
 
@@ -496,10 +497,15 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     let lastId: string | null = state.selectedPhotoId;
     const thumbUrls = { ...state.thumbUrls };
     const displayUrls = { ...state.displayUrls };
+    const originalsDir = await ensureDirPath(handle, "originals");
+    const displayDir = await ensureDirPath(handle, "derived/display");
+    const thumbsDir = await ensureDirPath(handle, "derived/thumbs");
+    type Imported = { photo: Photo; thumb?: string; display?: string };
+    const imported: (Imported | { error: string } | undefined)[] = new Array(images.length);
+    let finished = 0;
 
-    for (let i = 0; i < images.length; i += 1) {
-      const file = images[i]!;
-      set({ importProgress: { current: i + 1, total: images.length, name: file.name }, error: null });
+    await runPool(images, 2, async (file, index) => {
+      set({ importProgress: { current: finished + 1, total: images.length, name: file.name }, error: null });
       try {
         const prepared = await prepareImage(file);
         const id = newId();
@@ -507,9 +513,11 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         const originalPath = `originals/${id}.${ext}`;
         const displayPath = `derived/display/${id}.webp`;
         const thumbPath = `derived/thumbs/${id}.webp`;
-        await writeBinaryFile(handle, originalPath, file);
-        await writeBinaryFile(handle, displayPath, prepared.display);
-        await writeBinaryFile(handle, thumbPath, prepared.thumb);
+        await Promise.all([
+          writeFileInDir(originalsDir, `${id}.${ext}`, file),
+          writeFileInDir(displayDir, `${id}.webp`, prepared.display),
+          writeFileInDir(thumbsDir, `${id}.webp`, prepared.thumb),
+        ]);
         const exif = await readFileExif(file);
         const photo: Photo = {
           id,
@@ -524,15 +532,28 @@ export const useEditorStore = create<EditorState>((set, get) => ({
           height: prepared.height,
           exif: exif?.camera || exif?.focalLength ? { camera: exif.camera, focalLength: exif.focalLength } : undefined,
         };
-        photos.push(photo);
-        newRefs.push({ type: "photo", id });
-        lastId = id;
         const urls = await addPreviewUrl(handle, photo);
-        if (urls.thumb) thumbUrls[id] = urls.thumb;
-        if (urls.display) displayUrls[id] = urls.display;
+        imported[index] = { photo, thumb: urls.thumb, display: urls.display };
       } catch (err) {
-        errors.push(`${file.name}: ${err instanceof Error ? err.message : "Import fehlgeschlagen"}`);
+        imported[index] = {
+          error: `${file.name}: ${err instanceof Error ? err.message : "Import fehlgeschlagen"}`,
+        };
       }
+      finished += 1;
+      set({ importProgress: { current: finished, total: images.length, name: file.name }, error: null });
+    });
+
+    for (const item of imported) {
+      if (!item) continue;
+      if ("error" in item) {
+        errors.push(item.error);
+        continue;
+      }
+      photos.push(item.photo);
+      newRefs.push({ type: "photo", id: item.photo.id });
+      lastId = item.photo.id;
+      if (item.thumb) thumbUrls[item.photo.id] = item.thumb;
+      if (item.display) displayUrls[item.photo.id] = item.display;
     }
 
     const current = get().catalog;
@@ -884,10 +905,12 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         const { catalog, canWrite, galleryPassword } = get();
         if (!handle || !canWrite) break;
         const site = { ...catalog.site, protection: editorProtection(catalog.site.protection) };
-        await writeJsonFile(handle, "data/photos.json", catalog.photos);
-        await writeJsonFile(handle, "data/tags.json", catalog.tags);
-        await writeJsonFile(handle, "data/site.json", site);
-        await writeJsonFile(handle, "data/texts.json", catalog.texts);
+        await Promise.all([
+          writeJsonFile(handle, "data/photos.json", catalog.photos),
+          writeJsonFile(handle, "data/tags.json", catalog.tags),
+          writeJsonFile(handle, "data/site.json", site),
+          writeJsonFile(handle, "data/texts.json", catalog.texts),
+        ]);
         if (site.protection.passwordProtect && galleryPassword) {
           await writeJsonFile(handle, GALLERY_SECRET_PATH, { password: galleryPassword });
         } else {

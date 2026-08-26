@@ -13,8 +13,14 @@ export function DeployButton() {
   const saveCatalog = useEditorStore((s) => s.saveCatalog);
   const [busy, setBusy] = useState(false);
   const [info, setInfo] = useState<string | null>(null);
+  const [progress, setProgress] = useState<{ current: number; total: number; skipped: number } | null>(null);
 
   if (status !== "ready") return null;
+
+  const busyLabel =
+    progress && progress.total
+      ? `Schreibe ${progress.current}/${progress.total}…`
+      : "Schreibe…";
 
   return (
     <div className="flex items-center gap-2">
@@ -24,6 +30,7 @@ export function DeployButton() {
         disabled={busy}
         onClick={async () => {
           setInfo(null);
+          setProgress(null);
           const dest = await pickDirectory("readwrite");
           if (!dest) return;
           const workspace = getWorkspaceHandle();
@@ -35,12 +42,13 @@ export function DeployButton() {
           try {
             await saveCatalog();
             const originBase = appBase();
-          const result = await writeDeployFolder({
+            const result = await writeDeployFolder({
               dest,
               catalog,
               workspace,
               originBase,
               password: useEditorStore.getState().galleryPassword,
+              onProgress: setProgress,
             });
             const appNote = result.copiedApp
               ? "Eigenständiger Ordner: index.html im Finder öffnen, JSON und veröffentlichte Bilder."
@@ -51,17 +59,21 @@ export function DeployButton() {
             ]
               .filter(Boolean)
               .join(" ");
+            const skipNote = result.skipped
+              ? ` ${result.skipped} unverändert übersprungen.`
+              : "";
             setInfo(
-              `${appNote} ${result.photoCount} Bild${result.photoCount === 1 ? "" : "er"}.${protectNote ? ` ${protectNote}` : ""}`,
+              `${appNote} ${result.photoCount} Bild${result.photoCount === 1 ? "" : "er"}.${protectNote ? ` ${protectNote}` : ""}${skipNote}`,
             );
           } catch (err) {
             setInfo(err instanceof Error ? err.message : "Deploy fehlgeschlagen");
           } finally {
             setBusy(false);
+            setProgress(null);
           }
         }}
       >
-        {busy ? "Schreibe…" : "Deploy-Ordner"}
+        {busy ? busyLabel : "Deploy-Ordner"}
       </button>
       {info ? <span className="max-w-md text-xs text-[var(--edit-muted)]">{info}</span> : null}
       {!supportsDirectoryPicker() ? (

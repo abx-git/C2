@@ -84,17 +84,76 @@ function splitPath(relativePath: string): { dir: string; name: string } {
   return { dir: parts.join("/"), name };
 }
 
+const dirCache = new WeakMap<FileSystemDirectoryHandle, Map<string, FileSystemDirectoryHandle>>();
+
+async function cachedDir(root: FileSystemDirectoryHandle, relativeDir: string): Promise<FileSystemDirectoryHandle> {
+  if (!relativeDir) return root;
+  let map = dirCache.get(root);
+  if (!map) {
+    map = new Map();
+    dirCache.set(root, map);
+  }
+  const hit = map.get(relativeDir);
+  if (hit) return hit;
+  const folder = await ensureDirPath(root, relativeDir);
+  map.set(relativeDir, folder);
+  return folder;
+}
+
+export async function runPool<T>(
+  items: readonly T[],
+  limit: number,
+  fn: (item: T, index: number) => Promise<void>,
+): Promise<void> {
+  if (!items.length) return;
+  let next = 0;
+  const workers = Math.min(Math.max(1, limit), items.length);
+  await Promise.all(
+    Array.from({ length: workers }, async () => {
+      while (true) {
+        const index = next;
+        next += 1;
+        if (index >= items.length) return;
+        await fn(items[index]!, index);
+      }
+    }),
+  );
+}
+
+export async function writeFileInDir(
+  folder: FileSystemDirectoryHandle,
+  name: string,
+  data: BufferSource | Blob | string,
+): Promise<void> {
+  const fileHandle = await folder.getFileHandle(name, { create: true });
+  const writable = await fileHandle.createWritable();
+  await writable.write(data);
+  await writable.close();
+}
+
+export async function fileSizeInDir(folder: FileSystemDirectoryHandle, name: string): Promise<number | null> {
+  try {
+    const file = await (await folder.getFileHandle(name)).getFile();
+    return file.size;
+  } catch {
+    return null;
+  }
+}
+
+export async function listEntryNames(folder: FileSystemDirectoryHandle): Promise<string[]> {
+  const names: string[] = [];
+  for await (const [name] of folder.entries()) names.push(name);
+  return names;
+}
+
 export async function writeTextFile(
   root: FileSystemDirectoryHandle,
   relativePath: string,
   content: string,
 ): Promise<void> {
   const { dir, name } = splitPath(relativePath);
-  const folder = dir ? await ensureDirPath(root, dir) : root;
-  const fileHandle = await folder.getFileHandle(name, { create: true });
-  const writable = await fileHandle.createWritable();
-  await writable.write(content);
-  await writable.close();
+  const folder = dir ? await cachedDir(root, dir) : root;
+  await writeFileInDir(folder, name, content);
 }
 
 export async function writeBinaryFile(
@@ -103,11 +162,8 @@ export async function writeBinaryFile(
   data: BufferSource | Blob,
 ): Promise<void> {
   const { dir, name } = splitPath(relativePath);
-  const folder = dir ? await ensureDirPath(root, dir) : root;
-  const fileHandle = await folder.getFileHandle(name, { create: true });
-  const writable = await fileHandle.createWritable();
-  await writable.write(data);
-  await writable.close();
+  const folder = dir ? await cachedDir(root, dir) : root;
+  await writeFileInDir(folder, name, data);
 }
 
 export async function readTextFile(root: FileSystemDirectoryHandle, relativePath: string): Promise<string | null> {
@@ -167,6 +223,18 @@ export async function emptyDirectory(root: FileSystemDirectoryHandle, relativeDi
   for (const entry of entries) {
     await folder.removeEntry(entry.name, { recursive: entry.kind === "directory" });
   }
+  dirCache.get(root)?.delete(relativeDir);
+}
+
+export async function removeMissingNames(folder: FileSystemDirectoryHandle, keep: Set<string>): Promise<void> {
+  const names = await listEntryNames(folder);
+  await runPool(
+    names.filter((name) => !keep.has(name)),
+    8,
+    async (name) => {
+      await folder.removeEntry(name, { recursive: true });
+    },
+  );
 }
 
 export async function copyFileBetween(
