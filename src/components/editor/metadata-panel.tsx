@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { isPublishTag, type Tag } from "@/lib/catalog";
+import { isPublishTag, PHOTO_RATING_MAX, type Tag } from "@/lib/catalog";
 import { useEditorStore } from "@/store/editor-store";
 
 export function confirmRemoveSelection(photoCount: number, textCount: number): boolean {
@@ -36,6 +36,7 @@ export function MetadataPanel() {
   const updateText = useEditorStore((s) => s.updateText);
   const addTag = useEditorStore((s) => s.addTag);
   const setPhotosTag = useEditorStore((s) => s.setPhotosTag);
+  const setPhotosRating = useEditorStore((s) => s.setPhotosRating);
   const deletePhoto = useEditorStore((s) => s.deletePhoto);
   const deleteText = useEditorStore((s) => s.deleteText);
   const deleteItems = useEditorStore((s) => s.deleteItems);
@@ -124,6 +125,7 @@ export function MetadataPanel() {
               }
             />
           </label>
+          <StarRating value={photo.rating ?? 0} onChange={(rating) => updatePhoto(photo.id, { rating })} />
         </>
       ) : text ? (
         <>
@@ -145,7 +147,18 @@ export function MetadataPanel() {
           </label>
         </>
       ) : (
-        <p className="text-xs text-[var(--edit-muted)]">Tags gelten für alle ausgewählten Bilder und Textkacheln.</p>
+        <>
+          {selectedPhotos.length && !selectedTexts.length ? (
+            <StarRating
+              value={selectedPhotos.every((item) => (item.rating ?? 0) === (selectedPhotos[0]?.rating ?? 0))
+                ? (selectedPhotos[0]?.rating ?? 0)
+                : 0}
+              mixed={!selectedPhotos.every((item) => (item.rating ?? 0) === (selectedPhotos[0]?.rating ?? 0))}
+              onChange={(rating) => setPhotosRating(selectedPhotos.map((item) => item.id), rating)}
+            />
+          ) : null}
+          <p className="text-xs text-[var(--edit-muted)]">Tags gelten für alle ausgewählten Bilder und Textkacheln.</p>
+        </>
       )}
       <div>
         <div className="mb-1 text-xs text-[var(--edit-muted)]">Tags</div>
@@ -249,6 +262,43 @@ export function MetadataPanel() {
         </button>
       ) : null}
     </aside>
+  );
+}
+
+function StarRating({
+  value,
+  mixed = false,
+  onChange,
+}: {
+  value: number;
+  mixed?: boolean;
+  onChange: (rating: number) => void;
+}) {
+  return (
+    <div>
+      <div className="mb-1 text-xs text-[var(--edit-muted)]">Sterne</div>
+      <div className="flex items-center gap-0.5" role="group" aria-label="Bewertung">
+        {Array.from({ length: PHOTO_RATING_MAX }, (_, index) => {
+          const n = index + 1;
+          const on = !mixed && value >= n;
+          return (
+            <button
+              key={n}
+              type="button"
+              title={n === 1 ? "1 Stern" : `${n} Sterne`}
+              aria-label={n === 1 ? "1 Stern" : `${n} Sterne`}
+              aria-pressed={on}
+              onClick={() => onChange(!mixed && value === n ? 0 : n)}
+              className={`px-0.5 text-base leading-none ${
+                on ? "text-[var(--edit-ink)]" : "text-[var(--edit-muted)]"
+              }`}
+            >
+              ★
+            </button>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 

@@ -78,6 +78,7 @@ export function PhotoLibrary() {
   const [dropTargetId, setDropTargetId] = useState<string | null>(null);
   const [dropAfter, setDropAfter] = useState(false);
   const [filter, setFilter] = useState<Record<string, FilterMode>>({});
+  const [untaggedFilter, setUntaggedFilter] = useState<FilterMode | null>(null);
   const [query, setQuery] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
   const reordering = useRef(false);
@@ -95,6 +96,14 @@ export function PhotoLibrary() {
     });
   };
 
+  const cycleUntagged = () => {
+    setUntaggedFilter((current) => {
+      if (current === "include") return "exclude";
+      if (current === "exclude") return null;
+      return "include";
+    });
+  };
+
   const visible = useMemo(() => {
     const include = Object.entries(filter)
       .filter(([, mode]) => mode === "include")
@@ -108,13 +117,18 @@ export function PhotoLibrary() {
         (item) => !exclude.some((id) => hasCatalogTag(itemEntity(item), id, tags)),
       );
     }
+    if (untaggedFilter === "include") {
+      items = items.filter((item) => itemEntity(item).tags.length === 0);
+    } else if (untaggedFilter === "exclude") {
+      items = items.filter((item) => itemEntity(item).tags.length > 0);
+    }
     if (query.trim()) items = items.filter((item) => matchesQuery(item, query));
     return items;
-  }, [filter, query, catalog, tags]);
+  }, [filter, untaggedFilter, query, catalog, tags]);
 
   const visibleIds = visible.map(itemId);
   const visiblePhotos = visible.flatMap((item) => (item.type === "photo" ? [item.photo] : []));
-  const tagFilterActive = Object.keys(filter).length > 0;
+  const tagFilterActive = Object.keys(filter).length > 0 || untaggedFilter != null;
   const queryActive = query.trim().length > 0;
   const filterActive = tagFilterActive || queryActive;
   const previewPhotos = visiblePhotos.length ? visiblePhotos : photos;
@@ -294,10 +308,31 @@ export function PhotoLibrary() {
             }`}
             onClick={() => {
               setFilter({});
+              setUntaggedFilter(null);
               setQuery("");
             }}
           >
             Alle
+          </button>
+          <button
+            type="button"
+            title={
+              untaggedFilter === "include"
+                ? "Nochmals klicken: Einträge mit Tags zeigen"
+                : untaggedFilter === "exclude"
+                  ? "Nochmals klicken: Filter lösen"
+                  : "Klicken: nur Einträge ohne Tags"
+            }
+            className={`rounded-full border px-2 py-0.5 text-xs ${
+              untaggedFilter === "include"
+                ? "border-[var(--edit-ink)] bg-[var(--edit-ink)] text-[#f7f5f1]"
+                : untaggedFilter === "exclude"
+                  ? "border-[var(--edit-ink)] bg-transparent text-[var(--edit-ink)] line-through"
+                  : "border-[var(--edit-line)] bg-[var(--edit-panel)]"
+            }`}
+            onClick={cycleUntagged}
+          >
+            {untaggedFilter === "exclude" ? "mit Tags" : "keine Tags gesetzt"}
           </button>
           {[...tags].sort((a, b) => Number(isPublishTag(b)) - Number(isPublishTag(a))).map((tag) => {
             const mode = filter[tag.id];
@@ -437,8 +472,13 @@ export function PhotoLibrary() {
                         />
                       ) : null}
                     </div>
-                    <div className="truncate px-2 py-1.5 text-xs text-[var(--edit-muted)]">
-                      {item.photo.title || item.photo.originalName}
+                    <div className="flex items-center justify-between gap-1 truncate px-2 py-1.5 text-xs text-[var(--edit-muted)]">
+                      <span className="min-w-0 truncate">{item.photo.title || item.photo.originalName}</span>
+                      {item.photo.rating > 0 ? (
+                        <span className="shrink-0 tracking-tight" aria-label={`${item.photo.rating} von 5 Sternen`}>
+                          {"★".repeat(item.photo.rating)}
+                        </span>
+                      ) : null}
                     </div>
                   </>
                 ) : (

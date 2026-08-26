@@ -6,6 +6,7 @@ import {
   emptyCatalog,
   emptyTexts,
   ensurePublishTag,
+  clampPhotoRating,
   isPublishTag,
   parseCatalog,
   parseGallerySecret,
@@ -82,7 +83,8 @@ type EditorState = {
   ensureDisplayUrl: (id: string) => Promise<string | null>;
   ensureDisplayUrls: (ids: string[]) => Promise<void>;
   setTab: (tab: EditorTab) => void;
-  updatePhoto: (id: string, patch: Partial<Pick<Photo, "title" | "caption" | "takenAt" | "tags">>) => void;
+  updatePhoto: (id: string, patch: Partial<Pick<Photo, "title" | "caption" | "takenAt" | "tags" | "rating">>) => void;
+  setPhotosRating: (ids: string[], rating: number) => void;
   updateText: (id: string, patch: Partial<Pick<TextTile, "title" | "body" | "tags">>) => void;
   addTextTile: () => string | null;
   setPhotosTag: (ids: string[], tagId: string, on: boolean) => void;
@@ -458,13 +460,6 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       return;
     }
 
-    const neighbor =
-      (beforeId
-        ? state.catalog.photos.photos.find((photo) => photo.id === beforeId) ??
-          state.catalog.texts?.texts.find((text) => text.id === beforeId)
-        : null) ?? undefined;
-    const inheritedTags = neighbor?.tags.slice() ?? [];
-
     const photos = [...state.catalog.photos.photos];
     const newRefs: FeedRef[] = [];
     const errors: string[] = [];
@@ -492,7 +487,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
           title: "",
           caption: "",
           takenAt: exif?.takenAt ?? new Date(file.lastModified).toISOString(),
-          tags: inheritedTags.slice(),
+          tags: [],
+          rating: 0,
           files: { original: originalPath, display: displayPath, thumb: thumbPath },
           width: prepared.width,
           height: prepared.height,
@@ -602,7 +598,17 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
   updatePhoto: (id, patch) => {
     const catalog = get().catalog;
-    const photos = catalog.photos.photos.map((photo) => (photo.id === id ? { ...photo, ...patch } : photo));
+    const nextPatch = patch.rating === undefined ? patch : { ...patch, rating: clampPhotoRating(patch.rating) };
+    const photos = catalog.photos.photos.map((photo) => (photo.id === id ? { ...photo, ...nextPatch } : photo));
+    set({ catalog: { ...catalog, photos: { version: 1, photos } }, dirty: true });
+  },
+
+  setPhotosRating: (ids, rating) => {
+    if (!ids.length) return;
+    const value = clampPhotoRating(rating);
+    const wanted = new Set(ids);
+    const catalog = get().catalog;
+    const photos = catalog.photos.photos.map((photo) => (wanted.has(photo.id) ? { ...photo, rating: value } : photo));
     set({ catalog: { ...catalog, photos: { version: 1, photos } }, dirty: true });
   },
 

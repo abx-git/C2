@@ -40,6 +40,14 @@ export type PhotoFiles = {
   thumb: string;
 };
 
+export const PHOTO_RATING_MIN = 0;
+export const PHOTO_RATING_MAX = 5;
+
+export function clampPhotoRating(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.min(PHOTO_RATING_MAX, Math.max(PHOTO_RATING_MIN, Math.round(value)));
+}
+
 export type Photo = {
   id: string;
   originalName: string;
@@ -47,6 +55,8 @@ export type Photo = {
   caption: string;
   takenAt: string | null;
   tags: string[];
+  /** 0 = keine Bewertung, 1–5 Sterne */
+  rating: number;
   files: PhotoFiles;
   width: number;
   height: number;
@@ -329,6 +339,7 @@ export function parsePhotos(raw: unknown): PhotosFile {
       caption: typeof item.caption === "string" ? item.caption : "",
       takenAt: typeof item.takenAt === "string" ? item.takenAt : null,
       tags: Array.isArray(item.tags) ? item.tags.filter((t): t is string => typeof t === "string") : [],
+      rating: clampPhotoRating(typeof item.rating === "number" ? item.rating : 0),
       files: { original, display, thumb },
       width: typeof item.width === "number" ? item.width : 1,
       height: typeof item.height === "number" ? item.height : 1,
