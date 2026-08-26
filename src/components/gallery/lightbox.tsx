@@ -11,6 +11,7 @@ type LightboxProps = {
   onIndex: (index: number) => void;
   playing?: boolean;
   intervalMs?: number;
+  sidebar?: React.ReactNode;
 };
 
 export function Lightbox({
@@ -21,6 +22,7 @@ export function Lightbox({
   onIndex,
   playing = false,
   intervalMs = 5000,
+  sidebar,
 }: LightboxProps) {
   const photo = photos[index];
 
@@ -40,6 +42,9 @@ export function Lightbox({
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      const tag = target?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || target?.isContentEditable) return;
       if (event.key === "Escape") onClose();
       if (event.key === "ArrowLeft") go(-1);
       if (event.key === "ArrowRight") go(1);
@@ -61,6 +66,7 @@ export function Lightbox({
 
   return (
     <div className="g-lightbox" role="dialog" aria-modal="true" aria-label={playing ? `Diashow: ${label}` : label}>
+      <div className="g-lightbox-main">
       <button type="button" className="g-lightbox-back" onClick={onClose} aria-label="Zurück zur Übersicht">
         <svg viewBox="0 0 24 24" aria-hidden="true">
           <path
@@ -102,6 +108,8 @@ export function Lightbox({
           {meta}
         </div>
       ) : null}
+      </div>
+      {sidebar ? <div className="g-lightbox-meta">{sidebar}</div> : null}
     </div>
   );
 }

@@ -12,7 +12,7 @@ import {
 } from "@/lib/catalog";
 import { Lightbox } from "@/components/gallery/lightbox";
 import { LayoutColumnsPicker } from "@/components/editor/layout-columns-picker";
-import { confirmRemoveSelection } from "@/components/editor/metadata-panel";
+import { confirmRemoveSelection, MetadataPanel } from "@/components/editor/metadata-panel";
 import { useEditorStore } from "@/store/editor-store";
 
 type FilterMode = "include" | "exclude";
@@ -554,6 +554,7 @@ export function PhotoLibrary() {
               const next = previewPhotos[index];
               if (next) openPreview(next.id);
             }}
+            sidebar={<MetadataPanel />}
           />
         </div>
       ) : null}

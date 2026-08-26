@@ -436,6 +436,15 @@
   background: var(--g-bg);
   color: var(--g-ink);
   display: flex;
+  flex-direction: row;
+}
+
+.theme-gallery-v1 .g-lightbox-main {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
   flex-direction: column;
 }
 
@@ -510,6 +519,22 @@
   height: 1.35rem;
 }
 
+.theme-gallery-v1 .g-lightbox-meta {
+  flex: none;
+  width: min(22rem, 40vw);
+  min-height: 0;
+  overflow: auto;
+  padding: 0.75rem;
+  background: var(--edit-bg, #ece8e2);
+  color: var(--edit-ink, #1c1b19);
+  border-left: 1px solid var(--edit-line, rgba(28, 27, 25, 0.12));
+}
+
+.theme-gallery-v1 .g-lightbox-meta .edit-field,
+.theme-gallery-v1 .g-lightbox-meta .edit-btn {
+  font-family: inherit;
+}
+
 @media (max-width: 840px) {
   .theme-gallery-v1 {
     --g-header-top: 1.4rem;
@@ -554,6 +579,17 @@
   .theme-gallery-v1 .g-work {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 1.1rem 0.7rem;
+  }
+
+  .theme-gallery-v1 .g-lightbox {
+    flex-direction: column;
+  }
+
+  .theme-gallery-v1 .g-lightbox-meta {
+    width: 100%;
+    max-height: 42%;
+    border-left: 0;
+    border-top: 1px solid var(--edit-line, rgba(28, 27, 25, 0.12));
   }
 }
 

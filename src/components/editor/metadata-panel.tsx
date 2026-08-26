@@ -41,6 +41,7 @@ export function MetadataPanel() {
   const deleteText = useEditorStore((s) => s.deleteText);
   const deleteItems = useEditorStore((s) => s.deleteItems);
   const openPreview = useEditorStore((s) => s.openPreview);
+  const previewPhotoId = useEditorStore((s) => s.previewPhotoId);
   const [tagDraft, setTagDraft] = useState("");
 
   if (selectedPhotoIds.length === 0) {
@@ -88,7 +89,7 @@ export function MetadataPanel() {
         <h2 className="text-sm font-medium">
           {photo ? "Metadaten" : text ? "Textkachel" : `${selectedPhotoIds.length} ausgewählt`}
         </h2>
-        {photo ? (
+        {photo && !previewPhotoId ? (
           <button type="button" className="edit-btn" onClick={() => openPreview(photo.id)}>
             Schnellansicht
           </button>
