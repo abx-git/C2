@@ -85,6 +85,7 @@ export function PhotoLibrary() {
   const inputRef = useRef<HTMLInputElement>(null);
   const reordering = useRef(false);
   const didDrag = useRef(false);
+  const clickTimer = useRef<number | null>(null);
   const fileInsertBeforeRef = useRef<string | null>(null);
 
   const cycleTag = (id: string) => {
@@ -166,12 +167,13 @@ export function PhotoLibrary() {
       const tag = target?.tagName;
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || target?.isContentEditable) return;
       if (!selectedPhotoIds.length || !canWrite) return;
+      if (previewPhotoId) return;
       event.preventDefault();
       removeSelected();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [canWrite, removeSelected, selectedPhotoIds.length]);
+  }, [canWrite, previewPhotoId, removeSelected, selectedPhotoIds.length]);
 
   const onFiles = useCallback(
     (list: FileList | File[] | null, beforeId?: string | null) => {
@@ -202,6 +204,14 @@ export function PhotoLibrary() {
     fileInsertBeforeRef.current = null;
     onFiles(filesFromDrop(event), at);
   };
+
+  const clearClickTimer = () => {
+    if (clickTimer.current == null) return;
+    window.clearTimeout(clickTimer.current);
+    clickTimer.current = null;
+  };
+
+  useEffect(() => () => clearClickTimer(), []);
 
   const selectItem = (item: FeedItem, event: React.MouseEvent) => {
     const id = itemId(item);
@@ -484,9 +494,23 @@ export function PhotoLibrary() {
                 }}
                 onClick={(event) => {
                   if (didDrag.current) return;
-                  selectItem(item, event);
+                  if (item.type === "photo" && event.detail > 1) {
+                    clearClickTimer();
+                    return;
+                  }
+                  if (event.metaKey || event.ctrlKey || event.shiftKey || item.type !== "photo") {
+                    clearClickTimer();
+                    selectItem(item, event);
+                    return;
+                  }
+                  clearClickTimer();
+                  clickTimer.current = window.setTimeout(() => {
+                    clickTimer.current = null;
+                    selectPhoto(id);
+                  }, 220);
                 }}
                 onDoubleClick={() => {
+                  clearClickTimer();
                   if (didDrag.current || item.type !== "photo") return;
                   openPreview(item.photo.id);
                 }}
@@ -549,7 +573,10 @@ export function PhotoLibrary() {
             photos={previewPhotos}
             index={previewAt}
             resolveUrl={(photo: Photo) => displayUrls[photo.id] ?? thumbUrls[photo.id] ?? ""}
-            onClose={closePreview}
+            onClose={() => {
+              didDrag.current = false;
+              closePreview();
+            }}
             onIndex={(index) => {
               const next = previewPhotos[index];
               if (next) openPreview(next.id);

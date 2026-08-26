@@ -27,8 +27,12 @@ export function MetadataPanel() {
   const photos = useEditorStore((s) => s.catalog.photos.photos);
   const texts = useEditorStore((s) => s.catalog.texts?.texts ?? []);
   const selectedPhotoIds = useEditorStore((s) => s.selectedPhotoIds);
-  const selectedPhotos = photos.filter((photo) => selectedPhotoIds.includes(photo.id));
-  const selectedTexts = texts.filter((text) => selectedPhotoIds.includes(text.id));
+  const previewPhotoId = useEditorStore((s) => s.previewPhotoId);
+  const previewPhoto = previewPhotoId ? (photos.find((item) => item.id === previewPhotoId) ?? null) : null;
+  const selectedPhotos = previewPhoto
+    ? [previewPhoto]
+    : photos.filter((item) => selectedPhotoIds.includes(item.id));
+  const selectedTexts = previewPhoto ? [] : texts.filter((item) => selectedPhotoIds.includes(item.id));
   const photo = selectedPhotos.length === 1 && selectedTexts.length === 0 ? selectedPhotos[0]! : null;
   const text = selectedTexts.length === 1 && selectedPhotos.length === 0 ? selectedTexts[0]! : null;
   const tags = useEditorStore((s) => s.catalog.tags.tags);
@@ -41,10 +45,9 @@ export function MetadataPanel() {
   const deleteText = useEditorStore((s) => s.deleteText);
   const deleteItems = useEditorStore((s) => s.deleteItems);
   const openPreview = useEditorStore((s) => s.openPreview);
-  const previewPhotoId = useEditorStore((s) => s.previewPhotoId);
   const [tagDraft, setTagDraft] = useState("");
 
-  if (selectedPhotoIds.length === 0) {
+  if (!previewPhoto && selectedPhotoIds.length === 0) {
     return (
       <aside className="rounded-xl border border-[var(--edit-line)] bg-[var(--edit-panel)] p-4 text-sm text-[var(--edit-muted)]">
         Ein Bild oder eine Textkachel auswählen. Mehrere: Klick, Umschalt-Klick oder Cmd/Ctrl-Klick. Reihenfolge per

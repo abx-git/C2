@@ -104,6 +104,7 @@ type EditorState = {
 
 let workspaceHandle: FileSystemDirectoryHandle | null = null;
 let workspaceLoadId = 0;
+let saveInFlight: Promise<void> | null = null;
 const blobUrls = new Set<string>();
 const displayLoads = new Map<string, Promise<string | null>>();
 
@@ -561,7 +562,12 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       selectedPhotoId: focusId ?? ids.at(-1) ?? null,
     }),
   openPreview: (id) => {
-    set({ selectedPhotoId: id, selectedPhotoIds: [id], previewPhotoId: id });
+    const selected = get().selectedPhotoIds;
+    set({
+      selectedPhotoId: id,
+      previewPhotoId: id,
+      selectedPhotoIds: selected.length ? selected : [id],
+    });
     void get().ensureDisplayUrl(id);
   },
   closePreview: () => set({ previewPhotoId: null }),
@@ -816,24 +822,46 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   },
 
   saveCatalog: async () => {
-    const handle = workspaceHandle;
-    const { catalog, canWrite, dirty, galleryPassword } = get();
-    if (!handle || !canWrite || !dirty) return;
-    const site = { ...catalog.site, protection: editorProtection(catalog.site.protection) };
-    await writeJsonFile(handle, "data/photos.json", catalog.photos);
-    await writeJsonFile(handle, "data/tags.json", catalog.tags);
-    await writeJsonFile(handle, "data/site.json", site);
-    await writeJsonFile(handle, "data/texts.json", catalog.texts);
-    if (site.protection.passwordProtect && galleryPassword) {
-      await writeJsonFile(handle, GALLERY_SECRET_PATH, { password: galleryPassword });
-    } else {
-      try {
-        await removeFile(handle, GALLERY_SECRET_PATH);
-      } catch {
-        /* optional */
-      }
+    if (saveInFlight) {
+      await saveInFlight;
+      if (get().dirty) await get().saveCatalog();
+      return;
     }
-    set({ dirty: false, catalog: { ...catalog, site } });
+    let release: () => void = () => {};
+    saveInFlight = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    try {
+      while (get().dirty) {
+        const handle = workspaceHandle;
+        const { catalog, canWrite, galleryPassword } = get();
+        if (!handle || !canWrite) break;
+        const site = { ...catalog.site, protection: editorProtection(catalog.site.protection) };
+        await writeJsonFile(handle, "data/photos.json", catalog.photos);
+        await writeJsonFile(handle, "data/tags.json", catalog.tags);
+        await writeJsonFile(handle, "data/site.json", site);
+        await writeJsonFile(handle, "data/texts.json", catalog.texts);
+        if (site.protection.passwordProtect && galleryPassword) {
+          await writeJsonFile(handle, GALLERY_SECRET_PATH, { password: galleryPassword });
+        } else {
+          try {
+            await removeFile(handle, GALLERY_SECRET_PATH);
+          } catch {
+            /* optional */
+          }
+        }
+        set((state) => {
+          const editedDuringSave = state.catalog !== catalog;
+          return {
+            dirty: editedDuringSave,
+            catalog: editedDuringSave ? state.catalog : { ...catalog, site },
+          };
+        });
+      }
+    } finally {
+      saveInFlight = null;
+      release();
+    }
   },
 
   pickDeployFolder: async () => pickDirectory("readwrite"),

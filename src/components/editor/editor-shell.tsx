@@ -37,6 +37,7 @@ export function EditorShell() {
   const message = useEditorStore((s) => s.message);
   const error = useEditorStore((s) => s.error);
   const catalog = useEditorStore((s) => s.catalog);
+  const previewPhotoId = useEditorStore((s) => s.previewPhotoId);
   const thumbUrls = useEditorStore((s) => s.thumbUrls);
   const displayUrls = useEditorStore((s) => s.displayUrls);
 
@@ -148,7 +149,7 @@ export function EditorShell() {
           <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
             <PhotoLibrary />
             <div className="min-h-0 overflow-auto">
-              <MetadataPanel />
+              {previewPhotoId ? null : <MetadataPanel />}
             </div>
           </div>
         ) : tab === "tags" ? (
