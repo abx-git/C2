@@ -107,6 +107,7 @@ export function GalleryApp({ catalog, resolveUrl, className }: GalleryAppProps) 
   const [lightbox, setLightbox] = useState<number | null>(null);
   const [slideshow, setSlideshow] = useState(false);
   const [wantFullscreen, setWantFullscreen] = useState(false);
+  const [navOpen, setNavOpen] = useState(false);
   const stageRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
 
@@ -168,10 +169,20 @@ export function GalleryApp({ catalog, resolveUrl, className }: GalleryAppProps) 
   );
   const blocks = useMemo(() => layoutEssayFeed(items, width, layout), [items, width, layout]);
 
+  useEffect(() => {
+    if (!navOpen) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setNavOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [navOpen]);
+
   const selectPage = (id: string) => {
     setLightbox(null);
     setSlideshow(false);
     setWantFullscreen(false);
+    setNavOpen(false);
     setPageId(id);
     if (window.location.hash !== `#${id}`) {
       window.history.replaceState(null, "", `#${id}`);
@@ -213,7 +224,13 @@ export function GalleryApp({ catalog, resolveUrl, className }: GalleryAppProps) 
   return (
     <SaveGuard className={className}>
       <div
-        className={fadeIn ? "theme-gallery-v1 g-fade-in" : "theme-gallery-v1"}
+        className={[
+          "theme-gallery-v1",
+          fadeIn ? "g-fade-in" : "",
+          navOpen ? "g-nav-open" : "",
+        ]
+          .filter(Boolean)
+          .join(" ")}
         style={
           {
             ...galleryThemeStyle(layout.background),
@@ -221,7 +238,37 @@ export function GalleryApp({ catalog, resolveUrl, className }: GalleryAppProps) 
           } as React.CSSProperties
         }
       >
-      <div className="g-name">{catalog.site.title}</div>
+      <div className="g-name">
+        <span>{catalog.site.title}</span>
+        <button
+          type="button"
+          className="g-nav-toggle"
+          aria-expanded={navOpen}
+          aria-controls="g-archive-nav"
+          aria-label={navOpen ? "Navigation schließen" : "Navigation öffnen"}
+          onClick={() => setNavOpen((open) => !open)}
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            {navOpen ? (
+              <path
+                d="M7 7l10 10M17 7L7 17"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.2"
+                strokeLinecap="round"
+              />
+            ) : (
+              <path
+                d="M5 8h14M5 12h14M5 16h14"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.2"
+                strokeLinecap="round"
+              />
+            )}
+          </svg>
+        </button>
+      </div>
       <div className="g-essay-head">
         {heading ? <h1 className="g-essay-title">{heading}</h1> : <div className="g-essay-title" aria-hidden="true" />}
         {gallery && photos.length > 0 ? (
@@ -266,7 +313,7 @@ export function GalleryApp({ catalog, resolveUrl, className }: GalleryAppProps) 
         ) : null}
       </div>
 
-      <aside className="g-rail">
+      <aside className="g-rail" id="g-archive-nav">
         <nav aria-label="Archiv">
           <ArchiveList pages={navPages(catalog.site.pages)} activeId={page?.id ?? ""} onSelect={selectPage} />
         </nav>

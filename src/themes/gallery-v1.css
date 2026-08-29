@@ -94,8 +94,40 @@
 }
 
 .theme-gallery-v1 .g-name {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem;
   padding-left: 2rem;
   padding-right: 1.5rem;
+}
+
+.theme-gallery-v1 .g-name > span {
+  min-width: 0;
+}
+
+.theme-gallery-v1 .g-nav-toggle {
+  display: none;
+  flex: none;
+  margin: 0.12rem -0.2rem 0 0;
+  padding: 0.1rem;
+  border: 0;
+  background: transparent;
+  color: var(--g-ink);
+  cursor: pointer;
+  opacity: 0.38;
+  line-height: 0;
+}
+
+.theme-gallery-v1 .g-nav-toggle:hover,
+.theme-gallery-v1 .g-nav-toggle[aria-expanded="true"] {
+  opacity: 1;
+}
+
+.theme-gallery-v1 .g-nav-toggle svg {
+  display: block;
+  width: 1.35rem;
+  height: 1.35rem;
 }
 
 .theme-gallery-v1 .g-essay-head {
@@ -576,42 +608,65 @@
 @media (max-width: 840px) {
   .theme-gallery-v1 {
     --g-header-top: 1.4rem;
-    grid-template-columns: 1fr 1fr;
-    grid-template-rows: auto auto minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto auto minmax(0, 1fr);
   }
 
   .theme-gallery-v1 .g-name {
+    grid-row: 1;
     padding-left: 1.4rem;
-    padding-right: 0.6rem;
-  }
-
-  .theme-gallery-v1 .g-essay-head {
-    padding-left: 0.6rem;
     padding-right: 1.4rem;
   }
 
+  .theme-gallery-v1 .g-essay-head {
+    grid-row: 2;
+    padding-left: 1.4rem;
+    padding-right: 1.4rem;
+  }
+
+  .theme-gallery-v1 .g-essay-head:not(:has(.g-slideshow)):not(:has(h1)) {
+    display: none;
+  }
+
+  .theme-gallery-v1 .g-nav-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 2.4rem;
+    min-height: 2.4rem;
+    margin: -0.45rem -0.45rem 0 0;
+    opacity: 0.85;
+  }
+
   .theme-gallery-v1 .g-rail {
-    grid-column: 1 / -1;
+    display: none;
+    grid-row: 3;
     height: auto;
+    max-height: min(60vh, 22rem);
     padding: 0 1.4rem 0.8rem;
     border-bottom: 1px solid var(--g-line);
   }
 
+  .theme-gallery-v1.g-nav-open .g-rail {
+    display: block;
+  }
+
   .theme-gallery-v1 .g-archive {
-    flex-direction: row;
-    flex-wrap: wrap;
-    gap: 0.35rem 1.1rem;
+    gap: 0.4rem;
     padding-bottom: 1.2rem;
   }
 
   .theme-gallery-v1 .g-archive-group {
+    margin-top: 0.7rem;
+  }
+
+  .theme-gallery-v1 .g-archive-group:first-child {
     margin-top: 0;
-    width: 100%;
   }
 
   .theme-gallery-v1 .g-essay {
-    grid-column: 1 / -1;
-    padding: 1rem 0.8rem 0;
+    grid-row: 4;
+    padding: 0.4rem 1.4rem 0;
   }
 
   .theme-gallery-v1 .g-work {
