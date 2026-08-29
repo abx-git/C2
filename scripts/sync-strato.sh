@@ -1,9 +1,11 @@
 #!/bin/sh
 # Strato SSH is SFTP-only (no shell), so Mutagen cannot run an agent there.
-# This one-way replica matches mutagen's "flush": local deploy folder → web root.
+# Syncs into a subdirectory. In Strato Kundencenter, set the domain's
+# document root / Zielverzeichnis to that folder (default: /likibox).
 set -e
 SRC="${C2_DEPLOY:-/Users/andreas.bergmann/Documents/c2.site/deploy6}"
-REMOTE="${C2_STRATO_REMOTE:-c2-strato:}"
+SUBDIR="${C2_STRATO_SUBDIR:-likibox}"
+REMOTE="${C2_STRATO_REMOTE:-c2-strato:${SUBDIR}}"
 
 if [ ! -d "$SRC" ]; then
   echo "Deploy-Ordner fehlt: $SRC" >&2
