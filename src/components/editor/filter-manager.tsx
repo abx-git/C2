@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { catalogFeed, filterInUse } from "@/lib/catalog";
+import { catalogFeed, filterInUse, hasFilterOrder } from "@/lib/catalog";
 import { FilterCriteriaBar } from "@/components/editor/filter-criteria";
 import { useEditorStore } from "@/store/editor-store";
 
@@ -13,6 +13,7 @@ export function FilterManager() {
   const renameFilter = useEditorStore((s) => s.renameFilter);
   const updateFilterSpec = useEditorStore((s) => s.updateFilterSpec);
   const deleteFilter = useEditorStore((s) => s.deleteFilter);
+  const clearFilterOrder = useEditorStore((s) => s.clearFilterOrder);
   const [name, setName] = useState("");
 
   return (
@@ -21,7 +22,8 @@ export function FilterManager() {
       <p className="mb-4 text-sm text-[var(--edit-muted)]">
         Gespeicherte Filter nutzen dieselben Kriterien wie die Bilderliste: Tags ein- oder ausschließen, Bewertung,
         Suche. In der Seitenstruktur wird ein Filter ausgewählt. Ändert sich der Filter, ändert sich die Bildauswahl
-        aller Seiten, die ihn verwenden.
+        aller Seiten, die ihn verwenden. Per Ziehen in der Bilderliste kann jeder Filter eine eigene Reihenfolge
+        bekommen; sonst gilt die allgemeine Sortierung.
       </p>
       <form
         className="mb-6 flex gap-2"
@@ -46,7 +48,8 @@ export function FilterManager() {
       ) : (
         <ul className="divide-y divide-[var(--edit-line)] rounded-xl border border-[var(--edit-line)] bg-[var(--edit-panel)]">
           {filters.map((filter) => {
-            const count = catalogFeed(catalog, filter.spec).length;
+            const count = catalogFeed(catalog, filter.spec, filter.order).length;
+            const ownOrder = hasFilterOrder(filter);
             return (
               <li key={filter.id} className="space-y-2 px-3 py-3">
                 <div className="flex flex-wrap items-center gap-3">
@@ -58,7 +61,17 @@ export function FilterManager() {
                   <code className="shrink-0 text-[0.7rem] text-[var(--edit-muted)]">{filter.id}</code>
                   <span className="shrink-0 text-[0.7rem] text-[var(--edit-muted)]">
                     {count === 1 ? "1 Eintrag" : `${count} Einträge`}
+                    {ownOrder ? " · eigene Reihenfolge" : ""}
                   </span>
+                  {ownOrder ? (
+                    <button
+                      type="button"
+                      className="edit-btn shrink-0"
+                      onClick={() => clearFilterOrder(filter.id)}
+                    >
+                      Reihenfolge zurücksetzen
+                    </button>
+                  ) : null}
                   <button
                     type="button"
                     className="edit-btn shrink-0"

@@ -7,6 +7,7 @@ import {
   DEFAULT_LAYOUT,
   emptyFilterSpec,
   filterSpecsEqual,
+  hasFilterOrder,
   isEmptyFilterSpec,
   type FeedItem,
   type Photo,
@@ -70,6 +71,7 @@ export function PhotoLibrary() {
   const deleteItems = useEditorStore((s) => s.deleteItems);
   const updateSite = useEditorStore((s) => s.updateSite);
   const addFilter = useEditorStore((s) => s.addFilter);
+  const clearFilterOrder = useEditorStore((s) => s.clearFilterOrder);
   const importProgress = useEditorStore((s) => s.importProgress);
   const canWrite = useEditorStore((s) => s.canWrite);
   const savedFilters = catalog.filters?.filters ?? [];
@@ -77,6 +79,7 @@ export function PhotoLibrary() {
   const [dropTargetId, setDropTargetId] = useState<string | null>(null);
   const [dropAfter, setDropAfter] = useState(false);
   const [spec, setSpec] = useState<SavedFilterSpec>(() => emptyFilterSpec());
+  const [boundFilterId, setBoundFilterId] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const workAreaRef = useRef<HTMLDivElement>(null);
   const [workAreaWidth, setWorkAreaWidth] = useState(0);
@@ -85,12 +88,21 @@ export function PhotoLibrary() {
   const clickTimer = useRef<number | null>(null);
   const fileInsertBeforeRef = useRef<string | null>(null);
 
-  const visible = useMemo(() => catalogFeed(catalog, spec), [spec, catalog]);
+  const matchingSaved = useMemo(() => {
+    if (boundFilterId) {
+      const bound = savedFilters.find((item) => item.id === boundFilterId);
+      if (bound && filterSpecsEqual(spec, bound.spec)) return bound;
+    }
+    return savedFilters.find((item) => filterSpecsEqual(spec, item.spec));
+  }, [boundFilterId, savedFilters, spec]);
+  const visible = useMemo(
+    () => catalogFeed(catalog, spec, matchingSaved?.order),
+    [spec, catalog, matchingSaved],
+  );
 
   const visibleIds = visible.map(itemId);
   const visiblePhotos = visible.flatMap((item) => (item.type === "photo" ? [item.photo] : []));
   const filterActive = !isEmptyFilterSpec(spec);
-  const matchingSaved = savedFilters.find((item) => filterSpecsEqual(spec, item.spec));
   const previewPhotos = visiblePhotos.length ? visiblePhotos : photos;
   const previewAt = previewPhotoId ? previewPhotos.findIndex((photo) => photo.id === previewPhotoId) : -1;
   const textCount = catalog.texts?.texts.length ?? 0;
@@ -226,7 +238,11 @@ export function PhotoLibrary() {
             {filterActive ? `${visible.length} von ${photos.length + textCount}` : `${photos.length} Bild${photos.length === 1 ? "" : "er"}`}
             {textCount ? ` · ${textCount} Text` : ""}
             {selectedPhotoIds.length > 1 ? ` · ${selectedPhotoIds.length} ausgewählt` : ""}
-            {photos.length + textCount > 1 ? " · ziehen zum Sortieren" : ""}
+            {photos.length + textCount > 1
+              ? matchingSaved
+                ? ` · ziehen sortiert „${matchingSaved.name}“`
+                : " · ziehen zum Sortieren"
+              : ""}
             {importProgress
               ? ` · Import ${importProgress.current}/${importProgress.total}: ${importProgress.name}`
               : ""}
@@ -277,7 +293,15 @@ export function PhotoLibrary() {
         <div className="space-y-1.5">
           <div className="flex flex-wrap items-center gap-1.5">
             <span className="mr-1 text-xs text-[var(--edit-muted)]">Filter:</span>
-            <FilterCriteriaBar spec={spec} onChange={setSpec} tags={tags} className="contents" />
+            <FilterCriteriaBar
+              spec={spec}
+              onChange={(next) => {
+                setSpec(next);
+                if (isEmptyFilterSpec(next)) setBoundFilterId(null);
+              }}
+              tags={tags}
+              className="contents"
+            />
           </div>
           <div className="flex flex-wrap items-center gap-1.5">
             <span className="mr-1 text-xs text-[var(--edit-muted)]">Gespeichert:</span>
@@ -296,7 +320,10 @@ export function PhotoLibrary() {
                         ? "border-[var(--edit-ink)] bg-[var(--edit-ink)] text-[#f7f5f1]"
                         : "border-[var(--edit-line)] bg-[var(--edit-panel)]"
                     }`}
-                    onClick={() => setSpec(cloneFilterSpec(item.spec))}
+                    onClick={() => {
+                      setBoundFilterId(item.id);
+                      setSpec(cloneFilterSpec(item.spec));
+                    }}
                   >
                     {item.name}
                   </button>
@@ -320,6 +347,17 @@ export function PhotoLibrary() {
             >
               Speichern
             </button>
+            {matchingSaved && hasFilterOrder(matchingSaved) ? (
+              <button
+                type="button"
+                className="edit-btn px-2 py-0.5 text-xs"
+                disabled={!canWrite}
+                title="Eigene Reihenfolge dieses Filters löschen und wieder die allgemeine nutzen"
+                onClick={() => clearFilterOrder(matchingSaved.id)}
+              >
+                Reihenfolge zurücksetzen
+              </button>
+            ) : null}
           </div>
         </div>
         <LayoutColumnsPicker
@@ -402,7 +440,7 @@ export function PhotoLibrary() {
                   event.stopPropagation();
                   const fromId = event.dataTransfer.getData("text/plain");
                   setDropTargetId(null);
-                  if (fromId) reorderPhotos(fromId, id, visibleIds);
+                  if (fromId) reorderPhotos(fromId, id, visibleIds, matchingSaved?.id);
                 }}
                 onDragEnd={() => {
                   reordering.current = false;

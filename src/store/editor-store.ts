@@ -10,6 +10,7 @@ import {
   emptyTexts,
   ensurePublishTag,
   clampPhotoRating,
+  hasFilterOrder,
   isPublishTag,
   parseCatalog,
   parseFilters,
@@ -20,6 +21,7 @@ import {
   stripTagFromFilters,
   normalizeItems,
   rawSiteHasLegacyGalleryTags,
+  withoutFilterOrder,
   type Catalog,
   type FeedRef,
   type Photo,
@@ -98,8 +100,10 @@ type EditorState = {
   updateText: (id: string, patch: Partial<Pick<TextTile, "title" | "body" | "tags">>) => void;
   addTextTile: () => string | null;
   setPhotosTag: (ids: string[], tagId: string, on: boolean) => void;
-  reorderPhotos: (fromId: string, toId: string, visibleIds: string[]) => void;
-  sortGalleryByTakenAt: (spec?: SavedFilterSpec | null) => void;
+  reorderPhotos: (fromId: string, toId: string, visibleIds: string[], filterId?: string | null) => void;
+  sortGalleryByTakenAt: (filterId?: string | null) => void;
+  setFilterOrder: (id: string, order: string[] | undefined) => void;
+  clearFilterOrder: (id: string) => void;
   deletePhoto: (id: string) => Promise<void>;
   deleteText: (id: string) => void;
   deleteItems: (ids: string[]) => Promise<void>;
@@ -743,14 +747,21 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     });
   },
 
-  reorderPhotos: (fromId, toId, visibleIds) => {
+  reorderPhotos: (fromId, toId, visibleIds, filterId) => {
     if (fromId === toId) return;
     const catalog = get().catalog;
-    const items = normalizeItems(catalog.photos.photos, catalog.texts.texts, catalog.texts.items);
     const selected = get().selectedPhotoIds;
     const moving = selected.includes(fromId) && selected.length > 1 ? visibleIds.filter((id) => selected.includes(id)) : [fromId];
     const nextVisible = moveVisibleIds(visibleIds, moving, toId);
     if (!nextVisible) return;
+    if (filterId) {
+      const filters = (catalog.filters?.filters ?? []).map((item) =>
+        item.id === filterId ? { ...item, order: nextVisible } : item,
+      );
+      set({ catalog: { ...catalog, filters: { version: 1, filters } }, dirty: true });
+      return;
+    }
+    const items = normalizeItems(catalog.photos.photos, catalog.texts.texts, catalog.texts.items);
     const nextItems = applyVisibleOrder(items, visibleIds, nextVisible);
     set({
       catalog: { ...catalog, texts: { ...catalog.texts, items: nextItems } },
@@ -758,15 +769,26 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     });
   },
 
-  sortGalleryByTakenAt: (spec) => {
+  sortGalleryByTakenAt: (filterId) => {
     const catalog = get().catalog;
-    const items = normalizeItems(catalog.photos.photos, catalog.texts.texts, catalog.texts.items);
-    const visibleIds = catalogFeed(catalog, spec).map((item) =>
+    const saved = filterId ? catalog.filters?.filters.find((item) => item.id === filterId) : undefined;
+    if (filterId && !saved) return;
+    const visibleIds = catalogFeed(catalog, saved?.spec, saved?.order).map((item) =>
       item.type === "photo" ? item.photo.id : item.text.id,
     );
     if (visibleIds.length < 2) return;
     const nextVisible = sortVisiblePhotosByTakenAt(visibleIds, catalog.photos.photos);
-    if (nextVisible.every((id, index) => id === visibleIds[index])) return;
+    if (nextVisible.every((id, index) => id === visibleIds[index])) {
+      if (filterId && !hasFilterOrder(saved)) {
+        get().setFilterOrder(filterId, nextVisible);
+      }
+      return;
+    }
+    if (filterId) {
+      get().setFilterOrder(filterId, nextVisible);
+      return;
+    }
+    const items = normalizeItems(catalog.photos.photos, catalog.texts.texts, catalog.texts.items);
     set({
       catalog: {
         ...catalog,
@@ -774,6 +796,20 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       },
       dirty: true,
     });
+  },
+
+  setFilterOrder: (id, order) => {
+    const catalog = get().catalog;
+    const filters = (catalog.filters?.filters ?? []).map((item) => {
+      if (item.id !== id) return item;
+      if (order === undefined) return withoutFilterOrder(item);
+      return { ...item, order };
+    });
+    set({ catalog: { ...catalog, filters: { version: 1, filters } }, dirty: true });
+  },
+
+  clearFilterOrder: (id) => {
+    get().setFilterOrder(id, undefined);
   },
 
   deletePhoto: async (id) => {

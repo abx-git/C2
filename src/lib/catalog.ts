@@ -5,10 +5,12 @@ import {
   createSavedFilter,
   emptyFilters,
   filterSpecsEqual,
+  hasFilterOrder,
   isEmptyFilterSpec,
   parseFilters,
   specFromLegacyTags,
   stripTagFromSpec,
+  withoutFilterOrder,
   type FiltersFile,
   type SavedFilterSpec,
 } from "./saved-filter";
@@ -27,11 +29,13 @@ export {
   emptyFilterSpec,
   emptyFilters,
   filterSpecsEqual,
+  hasFilterOrder,
   isEmptyFilterSpec,
   parseFilters,
   specFromLegacyTags,
   stripTagFromSpec,
   toggleSpecRating,
+  withoutFilterOrder,
 } from "./saved-filter";
 
 export const CATALOG_VERSION = 1 as const;
@@ -765,7 +769,7 @@ export function publishedPhotos(photos: Photo[], tags: Tag[] = []): Photo[] {
   return photos.filter((photo) => photoIsPublished(photo, tags));
 }
 
-export function catalogFeed(catalog: Catalog, spec?: SavedFilterSpec | null): FeedItem[] {
+export function catalogFeed(catalog: Catalog, spec?: SavedFilterSpec | null, order?: string[] | null): FeedItem[] {
   const textsFile = catalog.texts ?? emptyTexts();
   const photos = new Map(catalog.photos.photos.map((photo) => [photo.id, photo]));
   const texts = new Map(textsFile.texts.map((text) => [text.id, text]));
@@ -787,11 +791,39 @@ export function catalogFeed(catalog: Catalog, spec?: SavedFilterSpec | null): Fe
       out.push(item);
     }
   }
+  return applyFeedOrder(out, order);
+}
+
+export function feedItemId(item: FeedItem): string {
+  return item.type === "photo" ? item.photo.id : item.text.id;
+}
+
+export function applyFeedOrder(items: FeedItem[], order?: string[] | null): FeedItem[] {
+  if (!order?.length) return items;
+  const byId = new Map(items.map((item) => [feedItemId(item), item]));
+  const seen = new Set<string>();
+  const out: FeedItem[] = [];
+  for (const id of order) {
+    const item = byId.get(id);
+    if (!item || seen.has(id)) continue;
+    seen.add(id);
+    out.push(item);
+  }
+  for (const item of items) {
+    const id = feedItemId(item);
+    if (seen.has(id)) continue;
+    out.push(item);
+  }
   return out;
 }
 
+export function resolvePageFilterOrder(page: GalleryPage, catalog: Catalog): string[] | undefined {
+  if (!page.filter.filterId) return undefined;
+  return catalog.filters?.filters.find((item) => item.id === page.filter.filterId)?.order;
+}
+
 export function catalogFeedForPage(catalog: Catalog, page: GalleryPage): FeedItem[] {
-  return catalogFeed(catalog, resolvePageFilterSpec(page, catalog));
+  return catalogFeed(catalog, resolvePageFilterSpec(page, catalog), resolvePageFilterOrder(page, catalog));
 }
 
 /** Öffentliche Galerie und Deploy: nur Einträge mit Tag publish. */
@@ -862,19 +894,19 @@ export function firstGalleryPage(page: SitePage): GalleryPage | null {
 
 /** Bilder, aus denen ein Index-Bild gewählt werden kann. */
 export function photosForCover(page: GalleryPage | GroupPage, catalog: Catalog): Photo[] {
-  const photos = catalog.photos.photos;
-  const tags = catalog.tags.tags;
-  if (page.type === "gallery") return filterPhotos(photos, resolvePageFilterSpec(page, catalog), tags);
+  const fromFeed = (gallery: GalleryPage) =>
+    catalogFeedForPage(catalog, gallery).flatMap((item) => (item.type === "photo" ? [item.photo] : []));
+  if (page.type === "gallery") return fromFeed(page);
   const seen = new Set<string>();
   const out: Photo[] = [];
   for (const gallery of flattenGalleryPages([page])) {
-    for (const photo of filterPhotos(photos, resolvePageFilterSpec(gallery, catalog), tags)) {
+    for (const photo of fromFeed(gallery)) {
       if (seen.has(photo.id)) continue;
       seen.add(photo.id);
       out.push(photo);
     }
   }
-  return out.length ? out : photos;
+  return out.length ? out : catalog.photos.photos;
 }
 
 export function coverPhoto(page: GalleryPage | GroupPage, catalog: Catalog): Photo | undefined {

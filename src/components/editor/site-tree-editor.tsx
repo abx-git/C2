@@ -11,7 +11,7 @@ import {
   SLIDESHOW_INTERVAL_MIN,
   pageVisibility,
   photosForCover,
-  resolvePageFilterSpec,
+  hasFilterOrder,
   type Catalog,
   type GalleryPage,
   type GroupPage,
@@ -41,9 +41,10 @@ export function SiteTreeEditor() {
       <h2 className="mb-3 text-sm font-medium">Seitenstruktur</h2>
       <p className="mb-4 text-sm text-[var(--edit-muted)]">
         Die Navigation folgt diesem Baum. Pro Galerie-Seite ein gespeicherter Filter: dann erscheinen nur passende
-        Bilder. Ändert sich der Filter, ändert sich die Auswahl mit. „Alle“ zeigt die ganze Sammlung. Das Index-Bild
-        erscheint auf der Work-Übersicht. Sichtbarkeit: öffentlich in der Navigation, eingeschränkt nur per Link, privat
-        nur im Editor. Eine Gruppe vererbt die strengere Stufe an ihre Seiten.
+        Bilder. Ändert sich der Filter, ändert sich die Auswahl mit. Die Reihenfolge kann pro Filter gesetzt werden,
+        sonst gilt die allgemeine Sortierung. „Alle“ zeigt die ganze Sammlung. Das Index-Bild erscheint auf der
+        Work-Übersicht. Sichtbarkeit: öffentlich in der Navigation, eingeschränkt nur per Link, privat nur im Editor.
+        Eine Gruppe vererbt die strengere Stufe an ihre Seiten.
       </p>
       <label className="mb-3 block text-xs text-[var(--edit-muted)]">
         Titel der Sammlung
@@ -409,10 +410,10 @@ function PageList({
               >
                 Alle
               </button>
-              {catalog.filters.filters.length === 0 ? (
+              {(catalog.filters?.filters ?? []).length === 0 ? (
                 <span className="text-xs text-[var(--edit-muted)]">keine Filter angelegt</span>
               ) : (
-                catalog.filters.filters.map((item) => {
+                (catalog.filters?.filters ?? []).map((item) => {
                   const on = page.filter.filterId === item.id;
                   return (
                     <button
@@ -435,20 +436,37 @@ function PageList({
               <button
                 type="button"
                 className="edit-btn ml-1"
-                title="Älteste zuerst. Danach per Ziehen in der Bilderliste ändern."
+                title={
+                  page.filter.filterId
+                    ? "Älteste zuerst. Gilt nur für diesen Filter."
+                    : "Älteste zuerst. Danach per Ziehen in der Bilderliste ändern."
+                }
                 onClick={() => {
-                  if (
-                    !window.confirm(
-                      "Bilder dieser Seite nach Aufnahmezeit sortieren (älteste zuerst)? Die Reihenfolge kannst du danach unter Bilder wieder per Ziehen ändern.",
-                    )
-                  ) {
-                    return;
-                  }
-                  useEditorStore.getState().sortGalleryByTakenAt(resolvePageFilterSpec(page, catalog));
+                  const filterId = page.filter.filterId;
+                  const message = filterId
+                    ? "Bilder dieses Filters nach Aufnahmezeit sortieren (älteste zuerst)? Die Reihenfolge gilt nur für diesen Filter."
+                    : "Bilder dieser Seite nach Aufnahmezeit sortieren (älteste zuerst)? Die Reihenfolge kannst du danach unter Bilder wieder per Ziehen ändern.";
+                  if (!window.confirm(message)) return;
+                  useEditorStore.getState().sortGalleryByTakenAt(filterId);
                 }}
               >
                 Nach Aufnahmezeit
               </button>
+              {hasFilterOrder(
+                catalog.filters?.filters.find((item) => item.id === page.filter.filterId),
+              ) && page.filter.filterId ? (
+                <button
+                  type="button"
+                  className="edit-btn px-2 py-0.5 text-xs"
+                  title="Eigene Reihenfolge löschen und wieder die allgemeine nutzen"
+                  onClick={() => {
+                    const id = page.filter.filterId;
+                    if (id) useEditorStore.getState().clearFilterOrder(id);
+                  }}
+                >
+                  Reihenfolge zurücksetzen
+                </button>
+              ) : null}
             </div>
             <CoverPicker
               value={page.cover}

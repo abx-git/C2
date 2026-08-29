@@ -17,6 +17,8 @@ export type SavedFilter = {
   name: string;
   slug: string;
   spec: SavedFilterSpec;
+  /** Eigene Reihenfolge. Fehlt sie, gilt die allgemeine Sortierung. */
+  order?: string[];
 };
 
 export type FiltersFile = {
@@ -108,6 +110,28 @@ export function parseFilterSpec(raw: unknown): SavedFilterSpec {
   return spec;
 }
 
+export function parseFilterOrder(raw: unknown): string[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const order: string[] = [];
+  const seen = new Set<string>();
+  for (const item of raw) {
+    if (typeof item !== "string" || !item || seen.has(item)) continue;
+    seen.add(item);
+    order.push(item);
+  }
+  return order.length ? order : undefined;
+}
+
+export function hasFilterOrder(filter: Pick<SavedFilter, "order"> | null | undefined): boolean {
+  return Array.isArray(filter?.order);
+}
+
+export function withoutFilterOrder(filter: SavedFilter): SavedFilter {
+  if (!hasFilterOrder(filter)) return filter;
+  const { order: _ignored, ...rest } = filter;
+  return rest;
+}
+
 export function parseFilters(raw: unknown): FiltersFile {
   if (!isRecord(raw) || !Array.isArray(raw.filters)) return emptyFilters();
   const filters: SavedFilter[] = [];
@@ -119,11 +143,13 @@ export function parseFilters(raw: unknown): FiltersFile {
     if (!id || !name || seen.has(id)) continue;
     seen.add(id);
     const slug = typeof item.slug === "string" ? item.slug : "";
+    const order = parseFilterOrder(item.order);
     filters.push({
       id,
       name,
       slug: slug || id,
       spec: parseFilterSpec(item.spec ?? item),
+      ...(order ? { order } : {}),
     });
   }
   return { version: 1, filters };
