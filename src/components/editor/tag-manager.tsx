@@ -17,9 +17,9 @@ export function TagManager() {
     <div className="mx-auto w-full max-w-xl">
       <h2 className="mb-3 text-sm font-medium">Tags</h2>
       <p className="mb-4 text-sm text-[var(--edit-muted)]">
-        Tags bekommen einen Anzeigenamen. Die interne ID bleibt stabil und wird für Kategorien in der Seitenstruktur
-        verwendet. Nur Bilder und Textkacheln mit dem Tag <strong>publish</strong> erscheinen auf der öffentlichen Seite und in der
-        Vorschau.
+        Tags bekommen einen Anzeigenamen. Die interne ID bleibt stabil. Nur Bilder und Textkacheln mit dem Tag{" "}
+        <strong>publish</strong> erscheinen auf der öffentlichen Seite und in der Vorschau. Welche Einträge auf einer
+        Galerie-Seite landen, steuern gespeicherte Filter unter Filter.
       </p>
       <form
         className="mb-6 flex gap-2"

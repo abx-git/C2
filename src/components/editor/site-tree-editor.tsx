@@ -9,15 +9,15 @@ import {
   GALLERY_BACKGROUNDS,
   SLIDESHOW_INTERVAL_MAX,
   SLIDESHOW_INTERVAL_MIN,
-  isPublishTag,
   pageVisibility,
   photosForCover,
+  resolvePageFilterSpec,
+  type Catalog,
   type GalleryPage,
   type GroupPage,
   type PageVisibility,
   type Photo,
   type SitePage,
-  type Tag,
 } from "@/lib/catalog";
 import { LayoutColumnsPicker } from "@/components/editor/layout-columns-picker";
 import { useEditorStore } from "@/store/editor-store";
@@ -28,8 +28,7 @@ function isGallery(page: SitePage): page is GalleryPage {
 
 export function SiteTreeEditor() {
   const site = useEditorStore((s) => s.catalog.site);
-  const tags = useEditorStore((s) => s.catalog.tags.tags);
-  const photos = useEditorStore((s) => s.catalog.photos.photos);
+  const catalog = useEditorStore((s) => s.catalog);
   const updateSite = useEditorStore((s) => s.updateSite);
   const galleryPassword = useEditorStore((s) => s.galleryPassword);
   const setGalleryPassword = useEditorStore((s) => s.setGalleryPassword);
@@ -41,10 +40,10 @@ export function SiteTreeEditor() {
     <div className="mx-auto w-full max-w-2xl">
       <h2 className="mb-3 text-sm font-medium">Seitenstruktur</h2>
       <p className="mb-4 text-sm text-[var(--edit-muted)]">
-        Die Navigation folgt diesem Baum. Pro Galerie-Seite genau ein Tag: dann erscheinen nur Bilder mit diesem Tag.
-        „Alle“ zeigt die ganze Sammlung. Das Index-Bild erscheint auf der Work-Übersicht. Sichtbarkeit: öffentlich in der
-        Navigation, eingeschränkt nur per Link, privat nur im Editor. Eine Gruppe vererbt die strengere Stufe an ihre
-        Seiten.
+        Die Navigation folgt diesem Baum. Pro Galerie-Seite ein gespeicherter Filter: dann erscheinen nur passende
+        Bilder. Ändert sich der Filter, ändert sich die Auswahl mit. „Alle“ zeigt die ganze Sammlung. Das Index-Bild
+        erscheint auf der Work-Übersicht. Sichtbarkeit: öffentlich in der Navigation, eingeschränkt nur per Link, privat
+        nur im Editor. Eine Gruppe vererbt die strengere Stufe an ihre Seiten.
       </p>
       <label className="mb-3 block text-xs text-[var(--edit-muted)]">
         Titel der Sammlung
@@ -73,7 +72,7 @@ export function SiteTreeEditor() {
         onProtection={(next) => updateSite({ ...site, protection: next })}
         onPassword={setGalleryPassword}
       />
-      <PageList pages={site.pages} tags={tags} photos={photos} onChange={setPages} depth={0} />
+      <PageList pages={site.pages} catalog={catalog} onChange={setPages} depth={0} />
       <div className="mt-4 flex gap-2">
         <button
           type="button"
@@ -81,7 +80,7 @@ export function SiteTreeEditor() {
           onClick={() =>
             setPages([
               ...site.pages,
-              { id: newId(), type: "gallery", title: "Neue Seite", visibility: "public", filter: { tags: [] } },
+              { id: newId(), type: "gallery", title: "Neue Seite", visibility: "public", filter: {} },
             ])
           }
         >
@@ -310,14 +309,12 @@ function ProtectionFields({
 
 function PageList({
   pages,
-  tags,
-  photos,
+  catalog,
   onChange,
   depth,
 }: {
   pages: SitePage[];
-  tags: Tag[];
-  photos: Photo[];
+  catalog: Catalog;
   onChange: (pages: SitePage[]) => void;
   depth: number;
 }) {
@@ -396,41 +393,41 @@ function PageList({
                   }}
                 />
               </label>
-              <span className="mr-1 text-xs text-[var(--edit-muted)]">Nur Bilder mit Tag:</span>
+              <span className="mr-1 text-xs text-[var(--edit-muted)]">Filter:</span>
               <button
                 type="button"
                 className={`rounded-full border px-2 py-0.5 text-xs ${
-                  page.filter.tags.length === 0
+                  !page.filter.filterId
                     ? "border-[var(--edit-ink)] bg-[var(--edit-ink)] text-[#f7f5f1]"
                     : "border-[var(--edit-line)]"
                 }`}
                 onClick={() => {
                   const next = [...pages];
-                  next[index] = { ...page, filter: { tags: [] } };
+                  next[index] = { ...page, filter: {} };
                   onChange(next);
                 }}
               >
                 Alle
               </button>
-              {tags.filter((tag) => !isPublishTag(tag.id)).length === 0 ? (
-                <span className="text-xs text-[var(--edit-muted)]">keine Tags angelegt</span>
+              {catalog.filters.filters.length === 0 ? (
+                <span className="text-xs text-[var(--edit-muted)]">keine Filter angelegt</span>
               ) : (
-                tags.filter((tag) => !isPublishTag(tag.id)).map((tag) => {
-                  const on = page.filter.tags.includes(tag.id);
+                catalog.filters.filters.map((item) => {
+                  const on = page.filter.filterId === item.id;
                   return (
                     <button
-                      key={tag.id}
+                      key={item.id}
                       type="button"
                       className={`rounded-full border px-2 py-0.5 text-xs ${
                         on ? "border-[var(--edit-ink)] bg-[var(--edit-ink)] text-[#f7f5f1]" : "border-[var(--edit-line)]"
                       }`}
                       onClick={() => {
                         const next = [...pages];
-                        next[index] = { ...page, filter: { tags: on ? [] : [tag.id] } };
+                        next[index] = { ...page, filter: on ? {} : { filterId: item.id } };
                         onChange(next);
                       }}
                     >
-                      {tag.name}
+                      {item.name}
                     </button>
                   );
                 })
@@ -447,7 +444,7 @@ function PageList({
                   ) {
                     return;
                   }
-                  useEditorStore.getState().sortGalleryByTakenAt(page.filter);
+                  useEditorStore.getState().sortGalleryByTakenAt(resolvePageFilterSpec(page, catalog));
                 }}
               >
                 Nach Aufnahmezeit
@@ -455,7 +452,7 @@ function PageList({
             </div>
             <CoverPicker
               value={page.cover}
-              photos={photosForCover(page, photos, tags)}
+              photos={photosForCover(page, catalog)}
               emptyLabel="Automatisch (erstes Bild)"
               onChange={(cover) => {
                 const next = [...pages];
@@ -468,7 +465,7 @@ function PageList({
             <div className="mt-3">
               <CoverPicker
                 value={page.cover}
-                photos={photosForCover(page, photos, tags)}
+                photos={photosForCover(page, catalog)}
                 emptyLabel="Automatisch (Seiten einzeln)"
                 onChange={(cover) => {
                   const next = [...pages];
@@ -478,8 +475,7 @@ function PageList({
               />
               <PageList
                 pages={page.children}
-                tags={tags}
-                photos={photos}
+                catalog={catalog}
                 depth={depth + 1}
                 onChange={(children) => {
                   const next = [...pages];
@@ -497,7 +493,7 @@ function PageList({
                     ...group,
                     children: [
                       ...group.children,
-                      { id: newId(), type: "gallery", title: "Neue Seite", visibility: "public", filter: { tags: [] } },
+                      { id: newId(), type: "gallery", title: "Neue Seite", visibility: "public", filter: {} },
                     ],
                   };
                   onChange(next);

@@ -16,12 +16,13 @@ type EmbeddedCatalog = {
   photos?: unknown;
   site?: unknown;
   texts?: unknown;
+  filters?: unknown;
 };
 
 function readEmbeddedCatalog(): Catalog | null {
   const raw = (globalThis as { __C2_CATALOG__?: EmbeddedCatalog }).__C2_CATALOG__;
   if (!raw) return null;
-  return parseCatalog(raw.tags ?? {}, raw.photos ?? {}, raw.site ?? {}, raw.texts ?? {});
+  return parseCatalog(raw.tags ?? {}, raw.photos ?? {}, raw.site ?? {}, raw.texts ?? {}, raw.filters ?? {});
 }
 
 async function fetchJson(url: string): Promise<unknown> {
@@ -32,21 +33,23 @@ async function fetchJson(url: string): Promise<unknown> {
 }
 
 async function loadCatalogFromJson(prefix: string): Promise<Catalog> {
-  const [tags, photos, site, texts] = await Promise.all([
+  const [tags, photos, site, texts, filters] = await Promise.all([
     fetchJson(`${prefix}/data/tags.json`),
     fetchJson(`${prefix}/data/photos.json`),
     fetchJson(`${prefix}/data/site.json`),
     fetchJson(`${prefix}/data/texts.json`),
+    fetchJson(`${prefix}/data/filters.json`),
   ]);
-  return parseCatalog(tags, photos, site, texts);
+  return parseCatalog(tags, photos, site, texts, filters);
 }
 
-export function catalogBootstrapScript(catalog: Pick<Catalog, "tags" | "photos" | "site" | "texts">): string {
+export function catalogBootstrapScript(catalog: Pick<Catalog, "tags" | "photos" | "site" | "texts" | "filters">): string {
   const json = JSON.stringify({
     tags: catalog.tags,
     photos: catalog.photos,
     site: catalog.site,
     texts: catalog.texts,
+    filters: catalog.filters,
   }).replace(/</g, "\\u003c");
   return `window.__C2_CATALOG__=${json};`;
 }

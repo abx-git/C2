@@ -3,9 +3,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   DEFAULT_LAYOUT,
-  catalogFeed,
-  clampSlideshowInterval,
+  catalogFeedForPage,
   clampFadeInDuration,
+  clampSlideshowInterval,
   coverPhoto,
   galleryThemeStyle,
   flattenLeafPages,
@@ -70,24 +70,20 @@ function ArchiveList({
 }
 
 function WorkIndex({
-  pages,
-  photos,
-  tags,
+  catalog,
   resolveUrl,
   onOpen,
 }: {
-  pages: SitePage[];
-  photos: Photo[];
-  tags: Catalog["tags"]["tags"];
+  catalog: Catalog;
   resolveUrl: (photo: Photo, kind: "thumb" | "display") => string;
   onOpen: (id: string) => void;
 }) {
-  const tiles = workIndexTiles(pages);
+  const tiles = workIndexTiles(catalog.site.pages);
   return (
     <div className="g-work">
       <p className="g-work-intro">my views</p>
       {tiles.map(({ page, openId }) => {
-        const photo = coverPhoto(page, photos, tags);
+        const photo = coverPhoto(page, catalog);
         if (!photo) return null;
         const year = page.type === "gallery" ? page.year : undefined;
         return (
@@ -163,7 +159,7 @@ export function GalleryApp({ catalog, resolveUrl, className }: GalleryAppProps) 
   const page = leafPages.find((p) => p.id === pageId) ?? leafPages[0];
   const gallery = page?.type === "gallery" ? page : null;
   const items = useMemo(
-    () => (gallery ? catalogFeed(catalog, gallery.filter) : []),
+    () => (gallery ? catalogFeedForPage(catalog, gallery) : []),
     [catalog, gallery],
   );
   const photos = useMemo(
@@ -279,13 +275,7 @@ export function GalleryApp({ catalog, resolveUrl, className }: GalleryAppProps) 
       <main className="g-essay">
         <div className="g-feed" ref={stageRef}>
           {page?.type === "work" ? (
-            <WorkIndex
-              pages={catalog.site.pages}
-              photos={catalog.photos.photos}
-              tags={catalog.tags.tags}
-              resolveUrl={resolveUrl}
-              onOpen={selectPage}
-            />
+            <WorkIndex catalog={catalog} resolveUrl={resolveUrl} onOpen={selectPage} />
           ) : page?.type === "contact" ? (
             <ContactForm email={catalog.site.contactEmail} />
           ) : items.length === 0 ? (

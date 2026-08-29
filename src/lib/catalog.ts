@@ -1,5 +1,38 @@
 import { newId } from "./id";
 import { uniqueSlug } from "./slug";
+import {
+  cloneFilterSpec,
+  createSavedFilter,
+  emptyFilters,
+  filterSpecsEqual,
+  isEmptyFilterSpec,
+  parseFilters,
+  specFromLegacyTags,
+  stripTagFromSpec,
+  type FiltersFile,
+  type SavedFilterSpec,
+} from "./saved-filter";
+
+export type {
+  FilterMode,
+  FiltersFile,
+  SavedFilter,
+  SavedFilterSpec,
+} from "./saved-filter";
+export {
+  cloneFilterSpec,
+  createSavedFilter,
+  cycleSpecTag,
+  cycleSpecUntagged,
+  emptyFilterSpec,
+  emptyFilters,
+  filterSpecsEqual,
+  isEmptyFilterSpec,
+  parseFilters,
+  specFromLegacyTags,
+  stripTagFromSpec,
+  toggleSpecRating,
+} from "./saved-filter";
 
 export const CATALOG_VERSION = 1 as const;
 
@@ -89,7 +122,10 @@ export type TextsFile = {
 export type FeedItem = { type: "photo"; photo: Photo } | { type: "text"; text: TextTile };
 
 export type GalleryFilter = {
-  tags: string[];
+  /** Gespeicherter Filter. Leer = alle Einträge. */
+  filterId?: string;
+  /** Alte Seiten: Pflicht-Tags (UND). Wird beim Laden in einen gespeicherten Filter überführt. */
+  tags?: string[];
 };
 
 export type PageVisibility = "public" | "restricted" | "private";
@@ -258,6 +294,7 @@ export function parseGallerySecret(raw: unknown): string {
 export type Catalog = {
   photos: PhotosFile;
   tags: TagsFile;
+  filters: FiltersFile;
   site: SiteFile;
   texts: TextsFile;
 };
@@ -289,7 +326,7 @@ export function emptySite(): SiteFile {
         type: "gallery",
         title: "Alle",
         visibility: "public",
-        filter: { tags: [] },
+        filter: {},
       },
       { id: "contact", type: "contact", title: "Contact", visibility: "public" },
     ],
@@ -297,7 +334,13 @@ export function emptySite(): SiteFile {
 }
 
 export function emptyCatalog(): Catalog {
-  return { photos: emptyPhotos(), tags: emptyTags(), site: emptySite(), texts: emptyTexts() };
+  return {
+    photos: emptyPhotos(),
+    tags: emptyTags(),
+    filters: emptyFilters(),
+    site: emptySite(),
+    texts: emptyTexts(),
+  };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -555,24 +598,96 @@ function parsePage(raw: unknown): SitePage | null {
   }
   if (raw.type === "work") return { id, type: "work", title, visibility };
   if (raw.type === "contact") return { id, type: "contact", title, visibility };
-  const filterTags =
-    isRecord(raw.filter) && Array.isArray(raw.filter.tags)
-      ? raw.filter.tags.filter((t): t is string => typeof t === "string")
-      : [];
   const year = typeof raw.year === "string" && raw.year.trim() ? raw.year.trim() : undefined;
   const cover = typeof raw.cover === "string" && raw.cover.trim() ? raw.cover.trim() : undefined;
-  return { id, type: "gallery", title, visibility, year, cover, filter: { tags: filterTags } };
+  return { id, type: "gallery", title, visibility, year, cover, filter: parseGalleryFilter(raw.filter) };
 }
 
-export function parseCatalog(tagsRaw: unknown, photosRaw: unknown, siteRaw: unknown, textsRaw?: unknown): Catalog {
+function parseGalleryFilter(raw: unknown): GalleryFilter {
+  if (!isRecord(raw)) return {};
+  const filter: GalleryFilter = {};
+  if (typeof raw.filterId === "string" && raw.filterId.trim()) filter.filterId = raw.filterId.trim();
+  if (Array.isArray(raw.tags)) {
+    const tags = raw.tags.filter((item): item is string => typeof item === "string" && item.length > 0);
+    if (tags.length) filter.tags = tags;
+  }
+  return filter;
+}
+
+export function parseCatalog(
+  tagsRaw: unknown,
+  photosRaw: unknown,
+  siteRaw: unknown,
+  textsRaw?: unknown,
+  filtersRaw?: unknown,
+): Catalog {
   const photos = parsePhotos(photosRaw);
   const texts = parseTexts(textsRaw);
-  return {
+  return migrateLegacyGalleryFilters({
     tags: parseTags(tagsRaw),
     photos,
     texts: { version: 1, texts: texts.texts, items: normalizeItems(photos.photos, texts.texts, texts.items) },
     site: parseSite(siteRaw),
+    filters: parseFilters(filtersRaw),
+  });
+}
+
+export function rawSiteHasLegacyGalleryTags(raw: unknown): boolean {
+  if (!isRecord(raw) || !Array.isArray(raw.pages)) return false;
+  const walk = (pages: unknown[]): boolean => {
+    for (const page of pages) {
+      if (!isRecord(page)) continue;
+      if (isRecord(page.filter) && Array.isArray(page.filter.tags) && page.filter.tags.length > 0) return true;
+      if (Array.isArray(page.children) && walk(page.children)) return true;
+    }
+    return false;
   };
+  return walk(raw.pages);
+}
+
+function mapGalleryPages(pages: SitePage[], map: (page: GalleryPage) => GalleryPage): SitePage[] {
+  return pages.map((page) => {
+    if (page.type === "gallery") return map(page);
+    if (page.type === "group") return { ...page, children: mapGalleryPages(page.children, map) };
+    return page;
+  });
+}
+
+export function migrateLegacyGalleryFilters(catalog: Catalog): Catalog {
+  const filters = [...catalog.filters.filters];
+
+  const ensureFilter = (name: string, spec: SavedFilterSpec): string => {
+    const existing = filters.find((item) => filterSpecsEqual(item.spec, spec));
+    if (existing) return existing.id;
+    const created = createSavedFilter(name, filters, spec);
+    filters.push(created);
+    return created.id;
+  };
+
+  const pages = mapGalleryPages(catalog.site.pages, (page) => {
+    if (page.filter.filterId) {
+      if (!page.filter.tags?.length) return page;
+      return { ...page, filter: { filterId: page.filter.filterId } };
+    }
+    const legacy = page.filter.tags ?? [];
+    if (!legacy.length) return { ...page, filter: {} };
+    const spec = specFromLegacyTags(legacy);
+    const names = legacy.map((id) => catalog.tags.tags.find((tag) => tag.id === id)?.name ?? id);
+    return { ...page, filter: { filterId: ensureFilter(names.join(" + ") || "Filter", spec) } };
+  });
+
+  const next: Catalog = {
+    ...catalog,
+    filters: { version: 1, filters },
+    site: { ...catalog.site, pages },
+  };
+  if (
+    JSON.stringify(catalog.filters) === JSON.stringify(next.filters) &&
+    JSON.stringify(catalog.site.pages) === JSON.stringify(next.site.pages)
+  ) {
+    return catalog;
+  }
+  return next;
 }
 
 export function createTag(name: string, existing: Tag[]): Tag {
@@ -599,10 +714,47 @@ export function hasCatalogTag(item: { tags: string[] }, tagId: string, tags: Tag
   return photoHasTag(item, tagId, tags);
 }
 
-/** Seite mit Tags: Foto muss jeden angegebenen Tag haben. Ohne Tags: alle Fotos. */
-export function filterPhotos(photos: Photo[], filter: GalleryFilter, tags: Tag[] = []): Photo[] {
-  if (!filter?.tags?.length) return photos;
-  return photos.filter((photo) => filter.tags.every((required) => photoHasTag(photo, required, tags)));
+function feedItemSearchText(item: FeedItem): string {
+  if (item.type === "photo") {
+    return [item.photo.title, item.photo.caption, item.photo.originalName].join("\n");
+  }
+  return [item.text.title, item.text.body].join("\n");
+}
+
+export function feedItemMatchesSpec(item: FeedItem, spec: SavedFilterSpec, tags: Tag[]): boolean {
+  const entity = item.type === "photo" ? item.photo : item.text;
+  const include: string[] = [];
+  const exclude: string[] = [];
+  for (const [id, mode] of Object.entries(spec.tags)) {
+    if (mode === "include") include.push(id);
+    else if (mode === "exclude") exclude.push(id);
+  }
+  if (include.length && !include.every((id) => photoHasTag(entity, id, tags))) return false;
+  if (exclude.some((id) => photoHasTag(entity, id, tags))) return false;
+  if (spec.untagged === "include" && entity.tags.length !== 0) return false;
+  if (spec.untagged === "exclude" && entity.tags.length === 0) return false;
+  if (spec.ratings.length) {
+    if (item.type !== "photo") return false;
+    if (!spec.ratings.includes(item.photo.rating ?? 0)) return false;
+  }
+  const needle = spec.query.trim().toLocaleLowerCase("de");
+  if (needle && !feedItemSearchText(item).toLocaleLowerCase("de").includes(needle)) return false;
+  return true;
+}
+
+export function resolvePageFilterSpec(page: GalleryPage, catalog: Catalog): SavedFilterSpec | undefined {
+  if (page.filter.filterId) {
+    const saved = catalog.filters?.filters.find((item) => item.id === page.filter.filterId);
+    return saved ? cloneFilterSpec(saved.spec) : undefined;
+  }
+  if (page.filter.tags?.length) return specFromLegacyTags(page.filter.tags);
+  return undefined;
+}
+
+/** Seite mit Filter: nur passende Einträge. Ohne Filter: alle. */
+export function filterPhotos(photos: Photo[], spec: SavedFilterSpec | null | undefined, tags: Tag[] = []): Photo[] {
+  if (!spec || isEmptyFilterSpec(spec)) return photos;
+  return photos.filter((photo) => feedItemMatchesSpec({ type: "photo", photo }, spec, tags));
 }
 
 export function photoIsPublished(photo: Photo, tags: Tag[] = []): boolean {
@@ -613,30 +765,33 @@ export function publishedPhotos(photos: Photo[], tags: Tag[] = []): Photo[] {
   return photos.filter((photo) => photoIsPublished(photo, tags));
 }
 
-export function catalogFeed(catalog: Catalog, filter?: GalleryFilter): FeedItem[] {
+export function catalogFeed(catalog: Catalog, spec?: SavedFilterSpec | null): FeedItem[] {
   const textsFile = catalog.texts ?? emptyTexts();
   const photos = new Map(catalog.photos.photos.map((photo) => [photo.id, photo]));
   const texts = new Map(textsFile.texts.map((text) => [text.id, text]));
   const items = normalizeItems(catalog.photos.photos, textsFile.texts, textsFile.items);
+  const active = spec && !isEmptyFilterSpec(spec) ? spec : null;
   const out: FeedItem[] = [];
   for (const ref of items) {
     if (ref.type === "photo") {
       const photo = photos.get(ref.id);
       if (!photo) continue;
-      if (filter?.tags.length && !filter.tags.every((required) => photoHasTag(photo, required, catalog.tags.tags))) {
-        continue;
-      }
-      out.push({ type: "photo", photo });
+      const item: FeedItem = { type: "photo", photo };
+      if (active && !feedItemMatchesSpec(item, active, catalog.tags.tags)) continue;
+      out.push(item);
     } else {
       const text = texts.get(ref.id);
       if (!text) continue;
-      if (filter?.tags.length && !filter.tags.every((required) => photoHasTag(text, required, catalog.tags.tags))) {
-        continue;
-      }
-      out.push({ type: "text", text });
+      const item: FeedItem = { type: "text", text };
+      if (active && !feedItemMatchesSpec(item, active, catalog.tags.tags)) continue;
+      out.push(item);
     }
   }
   return out;
+}
+
+export function catalogFeedForPage(catalog: Catalog, page: GalleryPage): FeedItem[] {
+  return catalogFeed(catalog, resolvePageFilterSpec(page, catalog));
 }
 
 /** Öffentliche Galerie und Deploy: nur Einträge mit Tag publish. */
@@ -706,12 +861,14 @@ export function firstGalleryPage(page: SitePage): GalleryPage | null {
 }
 
 /** Bilder, aus denen ein Index-Bild gewählt werden kann. */
-export function photosForCover(page: GalleryPage | GroupPage, photos: Photo[], tags: Tag[]): Photo[] {
-  if (page.type === "gallery") return filterPhotos(photos, page.filter, tags);
+export function photosForCover(page: GalleryPage | GroupPage, catalog: Catalog): Photo[] {
+  const photos = catalog.photos.photos;
+  const tags = catalog.tags.tags;
+  if (page.type === "gallery") return filterPhotos(photos, resolvePageFilterSpec(page, catalog), tags);
   const seen = new Set<string>();
   const out: Photo[] = [];
   for (const gallery of flattenGalleryPages([page])) {
-    for (const photo of filterPhotos(photos, gallery.filter, tags)) {
+    for (const photo of filterPhotos(photos, resolvePageFilterSpec(gallery, catalog), tags)) {
       if (seen.has(photo.id)) continue;
       seen.add(photo.id);
       out.push(photo);
@@ -720,10 +877,11 @@ export function photosForCover(page: GalleryPage | GroupPage, photos: Photo[], t
   return out.length ? out : photos;
 }
 
-export function coverPhoto(page: GalleryPage | GroupPage, photos: Photo[], tags: Tag[]): Photo | undefined {
-  const pool = photosForCover(page, photos, tags);
+export function coverPhoto(page: GalleryPage | GroupPage, catalog: Catalog): Photo | undefined {
+  const pool = photosForCover(page, catalog);
   if (page.cover) {
-    const chosen = photos.find((photo) => photo.id === page.cover) ?? pool.find((item) => item.id === page.cover);
+    const chosen =
+      catalog.photos.photos.find((photo) => photo.id === page.cover) ?? pool.find((item) => item.id === page.cover);
     if (chosen) return chosen;
   }
   return pool[0];
@@ -778,4 +936,19 @@ export function findPage(pages: SitePage[], id: string): SitePage | null {
 
 export function tagInUse(tagId: string, photos: Photo[], texts: TextTile[] = []): boolean {
   return photos.some((photo) => photo.tags.includes(tagId)) || texts.some((text) => text.tags.includes(tagId));
+}
+
+export function filterInUse(filterId: string, pages: SitePage[]): boolean {
+  for (const page of pages) {
+    if (page.type === "gallery" && page.filter.filterId === filterId) return true;
+    if (page.type === "group" && filterInUse(filterId, page.children)) return true;
+  }
+  return false;
+}
+
+export function stripTagFromFilters(filters: FiltersFile, tagId: string): FiltersFile {
+  return {
+    version: 1,
+    filters: filters.filters.map((item) => ({ ...item, spec: stripTagFromSpec(item.spec, tagId) })),
+  };
 }

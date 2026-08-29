@@ -19,8 +19,8 @@ export function slugify(name: string): string {
     .slice(0, 64);
 }
 
-export function uniqueSlug(base: string, existing: Set<string>): string {
-  const root = slugify(base) || "tag";
+export function uniqueSlug(base: string, existing: Set<string>, fallback = "tag"): string {
+  const root = slugify(base) || fallback;
   if (!existing.has(root)) return root;
   let n = 2;
   while (existing.has(`${root}-${n}`)) n += 1;

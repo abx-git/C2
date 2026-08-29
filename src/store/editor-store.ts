@@ -2,7 +2,9 @@ import { create } from "zustand";
 import { BRAVE_FS_HELP, isBrave } from "@/lib/browser";
 import {
   catalogFeed,
+  cloneFilterSpec,
   createTag,
+  createSavedFilter,
   editorProtection,
   emptyCatalog,
   emptyTexts,
@@ -10,14 +12,19 @@ import {
   clampPhotoRating,
   isPublishTag,
   parseCatalog,
+  parseFilters,
   parseGallerySecret,
   GALLERY_SECRET_PATH,
   tagInUse,
+  filterInUse,
+  stripTagFromFilters,
   normalizeItems,
+  rawSiteHasLegacyGalleryTags,
   type Catalog,
   type FeedRef,
-  type GalleryFilter,
   type Photo,
+  type SavedFilter,
+  type SavedFilterSpec,
   type SiteFile,
   type SitePage,
   type Tag,
@@ -44,7 +51,7 @@ import {
   writeJsonFile,
 } from "@/lib/workspace";
 
-export type EditorTab = "photos" | "tags" | "site" | "preview";
+export type EditorTab = "photos" | "tags" | "filters" | "site" | "preview";
 
 export type ImportProgress = {
   current: number;
@@ -92,13 +99,17 @@ type EditorState = {
   addTextTile: () => string | null;
   setPhotosTag: (ids: string[], tagId: string, on: boolean) => void;
   reorderPhotos: (fromId: string, toId: string, visibleIds: string[]) => void;
-  sortGalleryByTakenAt: (filter: GalleryFilter) => void;
+  sortGalleryByTakenAt: (spec?: SavedFilterSpec | null) => void;
   deletePhoto: (id: string) => Promise<void>;
   deleteText: (id: string) => void;
   deleteItems: (ids: string[]) => Promise<void>;
   addTag: (name: string) => Tag | null;
   renameTag: (id: string, name: string) => void;
   deleteTag: (id: string, force?: boolean) => boolean;
+  addFilter: (name: string, spec?: SavedFilterSpec) => SavedFilter | null;
+  renameFilter: (id: string, name: string) => void;
+  updateFilterSpec: (id: string, spec: SavedFilterSpec) => void;
+  deleteFilter: (id: string, force?: boolean) => boolean;
   updateSite: (site: SiteFile) => void;
   setGalleryPassword: (password: string) => void;
   saveCatalog: () => Promise<void>;
@@ -176,13 +187,14 @@ function sortVisiblePhotosByTakenAt(visibleIds: string[], photos: Photo[]): stri
 }
 
 async function loadCatalogFromHandle(handle: FileSystemDirectoryHandle): Promise<Catalog> {
-  const [tags, photos, site, texts] = await Promise.all([
+  const [tags, photos, site, texts, filters] = await Promise.all([
     readJsonFile(handle, "data/tags.json"),
     readJsonFile(handle, "data/photos.json"),
     readJsonFile(handle, "data/site.json"),
     readJsonFile(handle, "data/texts.json"),
+    readJsonFile(handle, "data/filters.json"),
   ]);
-  const catalog = parseCatalog(tags ?? {}, photos ?? {}, site ?? {}, texts ?? {});
+  const catalog = parseCatalog(tags ?? {}, photos ?? {}, site ?? {}, texts ?? {}, filters ?? {});
   return {
     ...catalog,
     tags: { version: 1, tags: ensurePublishTag(catalog.tags.tags) },
@@ -193,20 +205,24 @@ async function ensureWorkspaceLayout(handle: FileSystemDirectoryHandle): Promise
   for (const dir of WORKSPACE_DIRS) {
     await ensureDirPath(handle, dir);
   }
-  const [tags, photos, site, texts] = await Promise.all([
+  const [tags, photos, site, texts, filters] = await Promise.all([
     readJsonFile(handle, "data/tags.json"),
     readJsonFile(handle, "data/photos.json"),
     readJsonFile(handle, "data/site.json"),
     readJsonFile(handle, "data/texts.json"),
+    readJsonFile(handle, "data/filters.json"),
   ]);
-  const catalog = parseCatalog(tags ?? {}, photos ?? {}, site ?? {}, texts ?? {});
+  const catalog = parseCatalog(tags ?? {}, photos ?? {}, site ?? {}, texts ?? {}, filters ?? {});
   const nextTags = ensurePublishTag(catalog.tags.tags);
   if (!tags || nextTags.length !== catalog.tags.tags.length) {
     await writeJsonFile(handle, "data/tags.json", { version: 1, tags: nextTags });
   }
   if (!photos) await writeJsonFile(handle, "data/photos.json", catalog.photos);
-  if (!site) await writeJsonFile(handle, "data/site.json", catalog.site);
+  if (!site || rawSiteHasLegacyGalleryTags(site)) await writeJsonFile(handle, "data/site.json", catalog.site);
   if (!texts) await writeJsonFile(handle, "data/texts.json", catalog.texts);
+  if (!filters || catalog.filters.filters.length !== parseFilters(filters).filters.length) {
+    await writeJsonFile(handle, "data/filters.json", catalog.filters);
+  }
 }
 
 function fileName(path: string): string {
@@ -742,10 +758,10 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     });
   },
 
-  sortGalleryByTakenAt: (filter) => {
+  sortGalleryByTakenAt: (spec) => {
     const catalog = get().catalog;
     const items = normalizeItems(catalog.photos.photos, catalog.texts.texts, catalog.texts.items);
-    const visibleIds = catalogFeed(catalog, filter.tags.length ? filter : undefined).map((item) =>
+    const visibleIds = catalogFeed(catalog, spec).map((item) =>
       item.type === "photo" ? item.photo.id : item.text.id,
     );
     if (visibleIds.length < 2) return;
@@ -853,22 +869,83 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       ...text,
       tags: text.tags.filter((tagId) => tagId !== id),
     }));
-    const stripFilter = (pages: SitePage[]): SitePage[] =>
+    const stripLegacy = (pages: SitePage[]): SitePage[] =>
       pages.map((page) => {
         if (page.type === "gallery") {
-          return { ...page, filter: { tags: page.filter.tags.filter((tagId) => tagId !== id) } };
+          const leftover = page.filter.tags?.filter((tagId) => tagId !== id);
+          return {
+            ...page,
+            filter: {
+              ...(page.filter.filterId ? { filterId: page.filter.filterId } : {}),
+              ...(leftover?.length ? { tags: leftover } : {}),
+            },
+          };
         }
         if (page.type === "group") {
-          return { ...page, children: stripFilter(page.children) };
+          return { ...page, children: stripLegacy(page.children) };
         }
         return page;
       });
     set({
       catalog: {
+        ...catalog,
         photos: { version: 1, photos },
         texts: { ...catalog.texts, texts },
         tags: { version: 1, tags },
-        site: { ...catalog.site, pages: stripFilter(catalog.site.pages) },
+        filters: stripTagFromFilters(catalog.filters, id),
+        site: { ...catalog.site, pages: stripLegacy(catalog.site.pages) },
+      },
+      dirty: true,
+    });
+    return true;
+  },
+
+  addFilter: (name, spec) => {
+    const trimmed = name.trim();
+    if (!trimmed) return null;
+    const catalog = get().catalog;
+    const filter = createSavedFilter(trimmed, catalog.filters.filters, spec);
+    set({
+      catalog: { ...catalog, filters: { version: 1, filters: [...catalog.filters.filters, filter] } },
+      dirty: true,
+    });
+    return filter;
+  },
+
+  renameFilter: (id, name) => {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    const catalog = get().catalog;
+    const filters = catalog.filters.filters.map((item) => (item.id === id ? { ...item, name: trimmed } : item));
+    set({ catalog: { ...catalog, filters: { version: 1, filters } }, dirty: true });
+  },
+
+  updateFilterSpec: (id, spec) => {
+    const catalog = get().catalog;
+    const filters = catalog.filters.filters.map((item) =>
+      item.id === id ? { ...item, spec: cloneFilterSpec(spec) } : item,
+    );
+    set({ catalog: { ...catalog, filters: { version: 1, filters } }, dirty: true });
+  },
+
+  deleteFilter: (id, force = false) => {
+    const catalog = get().catalog;
+    if (!force && filterInUse(id, catalog.site.pages)) return false;
+    const filters = catalog.filters.filters.filter((item) => item.id !== id);
+    const clearId = (pages: SitePage[]): SitePage[] =>
+      pages.map((page) => {
+        if (page.type === "gallery") {
+          if (page.filter.filterId !== id) return page;
+          return { ...page, filter: {} };
+        }
+        if (page.type === "group") return { ...page, children: clearId(page.children) };
+        return page;
+      });
+    set({
+      catalog: {
+        ...catalog,
+        filters: { version: 1, filters },
+        site: { ...catalog.site, pages: clearId(catalog.site.pages) },
       },
       dirty: true,
     });
@@ -908,6 +985,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         await Promise.all([
           writeJsonFile(handle, "data/photos.json", catalog.photos),
           writeJsonFile(handle, "data/tags.json", catalog.tags),
+          writeJsonFile(handle, "data/filters.json", catalog.filters),
           writeJsonFile(handle, "data/site.json", site),
           writeJsonFile(handle, "data/texts.json", catalog.texts),
         ]);

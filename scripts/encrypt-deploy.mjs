@@ -46,6 +46,7 @@ function catalogBootstrap(catalog) {
     photos: catalog.photos,
     site: catalog.site,
     texts: catalog.texts,
+    filters: catalog.filters,
   }).replace(/</g, "\\u003c");
   return `window.__C2_CATALOG__=${json};`;
 }
@@ -79,6 +80,12 @@ const photos = JSON.parse(await readFile(join(dest, "data/photos.json"), "utf8")
 const site = JSON.parse(await readFile(join(dest, "data/site.json"), "utf8"));
 const tags = JSON.parse(await readFile(join(dest, "data/tags.json"), "utf8"));
 const texts = JSON.parse(await readFile(join(dest, "data/texts.json"), "utf8"));
+let filters = { version: 1, filters: [] };
+try {
+  filters = JSON.parse(await readFile(join(dest, "data/filters.json"), "utf8"));
+} catch {
+  /* optional */
+}
 
 const salt = randomBytes(16);
 const key = await deriveKey(password, salt, ITERATIONS);
@@ -119,7 +126,7 @@ for (const path of leftover) {
   await unlink(join(dest, "images", path));
 }
 
-const published = { tags, photos, site, texts };
+const published = { tags, photos, site, texts, filters };
 const bootstrap = catalogBootstrap(published);
 await writeFile(join(dest, "data/photos.json"), `${JSON.stringify(photos, null, 2)}\n`);
 await writeFile(join(dest, "data/site.json"), `${JSON.stringify(site, null, 2)}\n`);

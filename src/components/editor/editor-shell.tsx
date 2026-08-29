@@ -12,10 +12,12 @@ import { MetadataPanel } from "./metadata-panel";
 import { PhotoLibrary } from "./photo-library";
 import { SiteTreeEditor } from "./site-tree-editor";
 import { TagManager } from "./tag-manager";
+import { FilterManager } from "./filter-manager";
 
 const TABS: { id: EditorTab; label: string }[] = [
   { id: "photos", label: "Bilder" },
   { id: "tags", label: "Tags" },
+  { id: "filters", label: "Filter" },
   { id: "site", label: "Struktur" },
   { id: "preview", label: "Vorschau" },
 ];
@@ -155,6 +157,10 @@ export function EditorShell() {
         ) : tab === "tags" ? (
           <div className="min-h-0 flex-1 overflow-auto">
             <TagManager />
+          </div>
+        ) : tab === "filters" ? (
+          <div className="min-h-0 flex-1 overflow-auto">
+            <FilterManager />
           </div>
         ) : tab === "site" ? (
           <div className="min-h-0 flex-1 overflow-auto">

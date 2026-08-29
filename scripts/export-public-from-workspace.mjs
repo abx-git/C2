@@ -39,6 +39,12 @@ try {
 } catch {
   /* optional */
 }
+let filtersFile = { version: 1, filters: [] };
+try {
+  filtersFile = await readJson(join(workspace, "data", "filters.json"));
+} catch {
+  /* optional */
+}
 
 if (site?.protection?.watermark || site?.protection?.passwordProtect) {
   console.error(
@@ -114,6 +120,7 @@ await walkPages(site.pages);
 
 await writeFile(join(dest, "data", "photos.json"), `${JSON.stringify({ version: 1, photos: publicPhotos }, null, 2)}\n`);
 await writeFile(join(dest, "data", "tags.json"), `${JSON.stringify(tags, null, 2)}\n`);
+await writeFile(join(dest, "data", "filters.json"), `${JSON.stringify(filtersFile, null, 2)}\n`);
 await writeFile(join(dest, "data", "site.json"), `${JSON.stringify(site, null, 2)}\n`);
 await writeFile(
   join(dest, "data", "texts.json"),

@@ -3,14 +3,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   catalogFeed,
+  cloneFilterSpec,
   DEFAULT_LAYOUT,
-  hasCatalogTag,
-  isPublishTag,
-  PHOTO_RATING_MAX,
+  emptyFilterSpec,
+  filterSpecsEqual,
+  isEmptyFilterSpec,
   type FeedItem,
   type Photo,
+  type SavedFilterSpec,
 } from "@/lib/catalog";
 import { Lightbox } from "@/components/gallery/lightbox";
+import { FilterCriteriaBar } from "@/components/editor/filter-criteria";
 import { LayoutColumnsPicker } from "@/components/editor/layout-columns-picker";
 import { confirmRemoveSelection, MetadataPanel } from "@/components/editor/metadata-panel";
 import { fitMaxEdge, THUMB_MAX_EDGE } from "@/lib/image-prepare";
@@ -27,31 +30,12 @@ function thumbNativeSize(photo: Photo): { width: number; height: number } {
   return fitMaxEdge(photo.width, photo.height, THUMB_MAX_EDGE);
 }
 
-type FilterMode = "include" | "exclude";
-
 function itemId(item: FeedItem): string {
   return item.type === "photo" ? item.photo.id : item.text.id;
 }
 
-function itemEntity(item: FeedItem): { tags: string[] } {
-  return item.type === "photo" ? item.photo : item.text;
-}
-
 function isFileDrag(event: React.DragEvent) {
   return Array.from(event.dataTransfer.types).includes("Files");
-}
-
-function itemSearchText(item: FeedItem): string {
-  if (item.type === "photo") {
-    return [item.photo.title, item.photo.caption, item.photo.originalName].join("\n");
-  }
-  return [item.text.title, item.text.body].join("\n");
-}
-
-function matchesQuery(item: FeedItem, query: string): boolean {
-  const needle = query.trim().toLocaleLowerCase("de");
-  if (!needle) return true;
-  return itemSearchText(item).toLocaleLowerCase("de").includes(needle);
 }
 
 function filesFromDrop(event: React.DragEvent): File[] {
@@ -85,15 +69,14 @@ export function PhotoLibrary() {
   const addTextTile = useEditorStore((s) => s.addTextTile);
   const deleteItems = useEditorStore((s) => s.deleteItems);
   const updateSite = useEditorStore((s) => s.updateSite);
+  const addFilter = useEditorStore((s) => s.addFilter);
   const importProgress = useEditorStore((s) => s.importProgress);
   const canWrite = useEditorStore((s) => s.canWrite);
+  const savedFilters = catalog.filters?.filters ?? [];
   const [draggingFiles, setDraggingFiles] = useState(false);
   const [dropTargetId, setDropTargetId] = useState<string | null>(null);
   const [dropAfter, setDropAfter] = useState(false);
-  const [filter, setFilter] = useState<Record<string, FilterMode>>({});
-  const [untaggedFilter, setUntaggedFilter] = useState<FilterMode | null>(null);
-  const [ratingFilter, setRatingFilter] = useState<Set<number>>(() => new Set());
-  const [query, setQuery] = useState("");
+  const [spec, setSpec] = useState<SavedFilterSpec>(() => emptyFilterSpec());
   const inputRef = useRef<HTMLInputElement>(null);
   const workAreaRef = useRef<HTMLDivElement>(null);
   const [workAreaWidth, setWorkAreaWidth] = useState(0);
@@ -102,64 +85,12 @@ export function PhotoLibrary() {
   const clickTimer = useRef<number | null>(null);
   const fileInsertBeforeRef = useRef<string | null>(null);
 
-  const cycleTag = (id: string) => {
-    setFilter((current) => {
-      const next = { ...current };
-      const mode = next[id];
-      if (mode === "include") next[id] = "exclude";
-      else if (mode === "exclude") delete next[id];
-      else next[id] = "include";
-      return next;
-    });
-  };
-
-  const cycleUntagged = () => {
-    setUntaggedFilter((current) => {
-      if (current === "include") return "exclude";
-      if (current === "exclude") return null;
-      return "include";
-    });
-  };
-
-  const toggleRating = (rating: number) => {
-    setRatingFilter((current) => {
-      const next = new Set(current);
-      if (next.has(rating)) next.delete(rating);
-      else next.add(rating);
-      return next;
-    });
-  };
-
-  const visible = useMemo(() => {
-    const include = Object.entries(filter)
-      .filter(([, mode]) => mode === "include")
-      .map(([id]) => id);
-    const exclude = Object.entries(filter)
-      .filter(([, mode]) => mode === "exclude")
-      .map(([id]) => id);
-    let items = catalogFeed(catalog, include.length ? { tags: include } : undefined);
-    if (exclude.length) {
-      items = items.filter(
-        (item) => !exclude.some((id) => hasCatalogTag(itemEntity(item), id, tags)),
-      );
-    }
-    if (untaggedFilter === "include") {
-      items = items.filter((item) => itemEntity(item).tags.length === 0);
-    } else if (untaggedFilter === "exclude") {
-      items = items.filter((item) => itemEntity(item).tags.length > 0);
-    }
-    if (ratingFilter.size) {
-      items = items.filter((item) => item.type === "photo" && ratingFilter.has(item.photo.rating ?? 0));
-    }
-    if (query.trim()) items = items.filter((item) => matchesQuery(item, query));
-    return items;
-  }, [filter, untaggedFilter, ratingFilter, query, catalog, tags]);
+  const visible = useMemo(() => catalogFeed(catalog, spec), [spec, catalog]);
 
   const visibleIds = visible.map(itemId);
   const visiblePhotos = visible.flatMap((item) => (item.type === "photo" ? [item.photo] : []));
-  const tagFilterActive = Object.keys(filter).length > 0 || untaggedFilter != null || ratingFilter.size > 0;
-  const queryActive = query.trim().length > 0;
-  const filterActive = tagFilterActive || queryActive;
+  const filterActive = !isEmptyFilterSpec(spec);
+  const matchingSaved = savedFilters.find((item) => filterSpecsEqual(spec, item.spec));
   const previewPhotos = visiblePhotos.length ? visiblePhotos : photos;
   const previewAt = previewPhotoId ? previewPhotos.findIndex((photo) => photo.id === previewPhotoId) : -1;
   const textCount = catalog.texts?.texts.length ?? 0;
@@ -343,105 +274,53 @@ export function PhotoLibrary() {
             }}
           />
         </div>
-        <div className="flex flex-wrap items-center gap-1.5">
-          <span className="mr-1 text-xs text-[var(--edit-muted)]">Filter:</span>
-          <input
-            type="search"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Titel oder Text"
-            aria-label="Nach Titel oder Text suchen"
-            className="edit-field w-44 max-w-full py-0.5 text-xs"
-          />
-          <button
-            type="button"
-            className={`rounded-full border px-2 py-0.5 text-xs ${
-              !filterActive
-                ? "border-[var(--edit-ink)] bg-[var(--edit-ink)] text-[#f7f5f1]"
-                : "border-[var(--edit-line)] bg-[var(--edit-panel)]"
-            }`}
-            onClick={() => {
-              setFilter({});
-              setUntaggedFilter(null);
-              setRatingFilter(new Set());
-              setQuery("");
-            }}
-          >
-            Alle
-          </button>
-          <button
-            type="button"
-            title={
-              untaggedFilter === "include"
-                ? "Nochmals klicken: Einträge mit Tags zeigen"
-                : untaggedFilter === "exclude"
-                  ? "Nochmals klicken: Filter lösen"
-                  : "Klicken: nur Einträge ohne Tags"
-            }
-            className={`rounded-full border px-2 py-0.5 text-xs ${
-              untaggedFilter === "include"
-                ? "border-[var(--edit-ink)] bg-[var(--edit-ink)] text-[#f7f5f1]"
-                : untaggedFilter === "exclude"
-                  ? "border-[var(--edit-ink)] bg-transparent text-[var(--edit-ink)] line-through"
-                  : "border-[var(--edit-line)] bg-[var(--edit-panel)]"
-            }`}
-            onClick={cycleUntagged}
-          >
-            {untaggedFilter === "exclude" ? "mit Tags" : "keine Tags gesetzt"}
-          </button>
-          {Array.from({ length: PHOTO_RATING_MAX + 1 }, (_, rating) => {
-            const on = ratingFilter.has(rating);
-            const label = rating === 0 ? "keine Sterne" : "★".repeat(rating);
-            return (
-              <button
-                key={`rating-${rating}`}
-                type="button"
-                title={
-                  rating === 0
-                    ? on
-                      ? "Keine-Sterne-Filter lösen"
-                      : "Nur Bilder ohne Sterne"
-                    : on
-                      ? "Stern-Filter lösen"
-                      : `Nur ${rating} Stern${rating === 1 ? "" : "e"}`
-                }
-                className={`rounded-full border px-2 py-0.5 text-xs ${
-                  on
-                    ? "border-[var(--edit-ink)] bg-[var(--edit-ink)] text-[#f7f5f1]"
-                    : "border-[var(--edit-line)] bg-[var(--edit-panel)]"
-                }`}
-                onClick={() => toggleRating(rating)}
-              >
-                {label}
-              </button>
-            );
-          })}
-          {[...tags].sort((a, b) => Number(isPublishTag(b)) - Number(isPublishTag(a))).map((tag) => {
-            const mode = filter[tag.id];
-            return (
-              <button
-                key={tag.id}
-                type="button"
-                title={
-                  mode === "include"
-                    ? "Nochmals klicken: Tag ausschließen"
-                    : mode === "exclude"
-                      ? "Nochmals klicken: Filter lösen"
-                      : "Klicken: nach Tag filtern"
-                }
-                className={`rounded-full border px-2 py-0.5 text-xs ${
-                  mode === "include"
-                    ? "border-[var(--edit-ink)] bg-[var(--edit-ink)] text-[#f7f5f1]"
-                    : mode === "exclude"
-                      ? "border-[var(--edit-ink)] bg-transparent text-[var(--edit-ink)] line-through"
-                      : "border-[var(--edit-line)] bg-[var(--edit-panel)]"
-                }`}
-                onClick={() => cycleTag(tag.id)}
-              >
-                {mode === "exclude" ? `ohne ${tag.name}` : tag.name}
-              </button>
-            );
-          })}
+        <div className="space-y-1.5">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="mr-1 text-xs text-[var(--edit-muted)]">Filter:</span>
+            <FilterCriteriaBar spec={spec} onChange={setSpec} tags={tags} className="contents" />
+          </div>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="mr-1 text-xs text-[var(--edit-muted)]">Gespeichert:</span>
+            {savedFilters.length === 0 ? (
+              <span className="text-xs text-[var(--edit-muted)]">noch keine Filter</span>
+            ) : (
+              savedFilters.map((item) => {
+                const on = matchingSaved?.id === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    title="Kriterien dieses Filters übernehmen"
+                    className={`rounded-full border px-2 py-0.5 text-xs ${
+                      on
+                        ? "border-[var(--edit-ink)] bg-[var(--edit-ink)] text-[#f7f5f1]"
+                        : "border-[var(--edit-line)] bg-[var(--edit-panel)]"
+                    }`}
+                    onClick={() => setSpec(cloneFilterSpec(item.spec))}
+                  >
+                    {item.name}
+                  </button>
+                );
+              })
+            )}
+            <button
+              type="button"
+              className="edit-btn ml-1 px-2 py-0.5 text-xs"
+              disabled={!canWrite || !filterActive || Boolean(matchingSaved)}
+              title={
+                matchingSaved
+                  ? `Bereits gespeichert als „${matchingSaved.name}“`
+                  : "Aktuelle Kriterien als Filter speichern"
+              }
+              onClick={() => {
+                const name = window.prompt("Name für diesen Filter");
+                if (!name?.trim()) return;
+                addFilter(name, spec);
+              }}
+            >
+              Speichern
+            </button>
+          </div>
         </div>
         <LayoutColumnsPicker
           value={(catalog.site.layout ?? DEFAULT_LAYOUT).columns}
