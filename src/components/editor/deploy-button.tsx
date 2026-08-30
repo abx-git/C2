@@ -1,19 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { appBase } from "@/lib/app-base";
+import { describeSync, fetchSyncStatus, runSyncTransfer, type SyncStatus } from "@/lib/c2-sync";
 import { writeDeployFolder } from "@/lib/deploy";
 import { pickDirectory, supportsDirectoryPicker } from "@/lib/workspace";
 import { useEditorStore } from "@/store/editor-store";
-
-function requestServerTransfer() {
-  const link = document.createElement("a");
-  link.href = "c2sync://transfer";
-  link.style.display = "none";
-  document.body.appendChild(link);
-  link.click();
-  window.setTimeout(() => link.remove(), 500);
-}
 
 export function DeployButton() {
   const status = useEditorStore((s) => s.status);
@@ -23,6 +15,21 @@ export function DeployButton() {
   const [busy, setBusy] = useState(false);
   const [info, setInfo] = useState<string | null>(null);
   const [progress, setProgress] = useState<{ current: number; total: number; skipped: number } | null>(null);
+  const [sync, setSync] = useState<SyncStatus | null | undefined>(undefined);
+
+  useEffect(() => {
+    let cancelled = false;
+    const refresh = async (probe = false) => {
+      const next = await fetchSyncStatus(probe);
+      if (!cancelled) setSync(next);
+    };
+    void refresh(false);
+    const timer = window.setInterval(() => void refresh(false), 6000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, []);
 
   if (status !== "ready") return null;
 
@@ -30,6 +37,8 @@ export function DeployButton() {
     progress && progress.total
       ? `Schreibe ${progress.current}/${progress.total}…`
       : "Schreibe…";
+  const syncView = sync === undefined ? null : describeSync(sync);
+  const syncReady = Boolean(sync?.configured && sync.deployExists && sync.reachable !== false);
 
   return (
     <div className="flex flex-wrap items-center gap-2">
@@ -72,7 +81,9 @@ export function DeployButton() {
               ? ` ${result.skipped} unverändert übersprungen.`
               : "";
             setInfo(
-              `${appNote} ${result.photoCount} Bild${result.photoCount === 1 ? "" : "er"}.${protectNote ? ` ${protectNote}` : ""}${skipNote} Danach „Zum Server“ oder die Desktop-Verknüpfung.`,
+              `${appNote} ${result.photoCount} Bild${result.photoCount === 1 ? "" : "er"}.${protectNote ? ` ${protectNote}` : ""}${skipNote}${
+                syncReady ? " Danach „Zum Server“." : " Server-Sync ist noch nicht bereit — Setup prüfen."
+              }`,
             );
           } catch (err) {
             setInfo(err instanceof Error ? err.message : "Deploy fehlgeschlagen");
@@ -88,11 +99,33 @@ export function DeployButton() {
         type="button"
         className="edit-btn"
         disabled={busy}
-        onClick={() => {
-          requestServerTransfer();
-          setInfo(
-            "Übertragung gestartet. Wenn nichts passiert: einmal scripts/c2-sync/setup.command (Mac) bzw. setup.cmd (Windows) doppelklicken.",
-          );
+        onClick={async () => {
+          setBusy(true);
+          setInfo("Prüfe Server-Verbindung…");
+          try {
+            const live = await fetchSyncStatus(true);
+            setSync(live);
+            const view = describeSync(live);
+            if (!live || !live.configured) {
+              setInfo(view.label);
+              return;
+            }
+            if (!live.deployExists) {
+              setInfo(view.label);
+              return;
+            }
+            if (live.reachable === false) {
+              setInfo(view.label);
+              return;
+            }
+            setInfo("Übertrage auf den Server…");
+            const result = await runSyncTransfer();
+            const after = await fetchSyncStatus(false);
+            setSync(after);
+            setInfo(result.ok ? "Galerie ist auf dem Server." : result.error);
+          } finally {
+            setBusy(false);
+          }
         }}
       >
         Zum Server
@@ -103,12 +136,26 @@ export function DeployButton() {
         disabled={busy}
         onClick={() => {
           setInfo(
-            "Einmalig Setup doppelklicken: Mac scripts/c2-sync/setup.command, Windows scripts/c2-sync/setup.cmd. Danach diesen Knopf oder die Desktop-Verknüpfung „C2 Galerie übertragen“.",
+            "Einmalig Setup doppelklicken: Mac scripts/c2-sync/setup.command, Windows scripts/c2-sync/setup.cmd. Danach bleibt der Sync-Status hier sichtbar.",
           );
         }}
       >
         Sync einrichten
       </button>
+      {syncView ? (
+        <span
+          role="status"
+          className={`max-w-lg text-xs ${
+            syncView.tone === "err"
+              ? "text-red-800"
+              : syncView.tone === "warn"
+                ? "text-amber-800"
+                : "text-[var(--edit-muted)]"
+          }`}
+        >
+          {syncView.label}
+        </span>
+      ) : null}
       {info ? <span className="max-w-md text-xs text-[var(--edit-muted)]">{info}</span> : null}
       {!supportsDirectoryPicker() ? (
         <span className="text-xs text-[var(--edit-muted)]">Chrome oder Edge nötig</span>

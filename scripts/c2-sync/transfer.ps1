@@ -3,13 +3,25 @@ $ErrorActionPreference = "Stop"
 $SyncHome = if ($env:C2_SYNC_HOME) { $env:C2_SYNC_HOME } else { Join-Path $env:USERPROFILE ".c2-sync" }
 $Conf = Join-Path $SyncHome "config"
 $Bin = Join-Path $SyncHome "bin"
+$Last = Join-Path $SyncHome "last.json"
 $env:PATH = "$Bin;$env:PATH"
 
+function Record-Last($ok, $error) {
+  New-Item -ItemType Directory -Force -Path $SyncHome | Out-Null
+  @{
+    ok = [bool]$ok
+    at = (Get-Date -Format "yyyy-MM-ddTHH:mm:ss")
+    error = if ($error) { "$error" } else { $null }
+  } | ConvertTo-Json -Compress | Set-Content -Path $Last -Encoding UTF8
+}
+
 function Fail($msg) {
+  Record-Last $false $msg
   Write-Error $msg
   exit 1
 }
 
+try {
 if (-not (Test-Path $Conf)) {
   Fail "C2-Sync ist noch nicht eingerichtet. Bitte scripts\c2-sync\setup.cmd doppelklicken."
 }
@@ -41,6 +53,7 @@ if ($method -eq "rclone") {
   & rclone sync $deploy $dest --sftp-shell-type none --sftp-known-hosts-file none --create-empty-src-dirs --exclude ".DS_Store" --progress
   if ($LASTEXITCODE -ne 0) { Fail "rclone sync fehlgeschlagen." }
   Write-Host "Fertig."
+  Record-Last $true $null
   exit 0
 }
 
@@ -57,5 +70,12 @@ if ($LASTEXITCODE -ne 0) {
 }
 Write-Host "mutagen flush → ${hostName}:${remote}"
 & mutagen sync flush $session
-if ($LASTEXITCODE -ne 0) { Fail "mutagen flush fehlgeschlagen." }
+if ($LASTEXITCODE -ne 0) { Fail "mutagen flush fehlgeschlagen. SSH-Zugang prüfen." }
 Write-Host "Fertig."
+Record-Last $true $null
+} catch {
+  if ($_.Exception.Message -notmatch "C2-Sync ist noch nicht|Deploy-Ordner fehlt|rclone fehlt|Mutagen fehlt|fehlgeschlagen") {
+    Record-Last $false $_.Exception.Message
+  }
+  throw
+}

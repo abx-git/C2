@@ -194,7 +194,48 @@ EOF
 chmod 600 "$SYNC_HOME/config"
 
 cp "$HERE/transfer.sh" "$SYNC_HOME/transfer.sh"
+cp "$HERE/agent.py" "$SYNC_HOME/agent.py"
 chmod +x "$SYNC_HOME/transfer.sh" "$HERE/transfer.sh"
+
+start_agent() {
+  local plist="$HOME/Library/LaunchAgents/de.likibox.c2sync.plist"
+  local python
+  python="$(command -v python3 || echo /usr/bin/python3)"
+  mkdir -p "$HOME/Library/LaunchAgents"
+  launchctl bootout "gui/$(id -u)/de.likibox.c2sync" >/dev/null 2>&1 || launchctl unload "$plist" >/dev/null 2>&1 || true
+  cat >"$plist" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>de.likibox.c2sync</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>${python}</string>
+    <string>${SYNC_HOME}/agent.py</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>${SYNC_HOME}</string>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <dict>
+    <key>SuccessfulExit</key>
+    <false/>
+  </dict>
+  <key>StandardOutPath</key>
+  <string>${SYNC_HOME}/agent.log</string>
+  <key>StandardErrorPath</key>
+  <string>${SYNC_HOME}/agent.log</string>
+</dict>
+</plist>
+PLIST
+  launchctl bootstrap "gui/$(id -u)" "$plist" >/dev/null 2>&1 || launchctl load "$plist" >/dev/null 2>&1 || true
+  "$python" "$SYNC_HOME/agent.py" >>"$SYNC_HOME/agent.log" 2>&1 &
+}
+
+start_agent
 
 # Protokoll c2sync:// für den Editor-Knopf „Zum Server“
 APP="$SYNC_HOME/C2Sync.app"

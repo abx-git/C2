@@ -18,3 +18,4 @@ npm-debug.log*
 *.tsbuildinfo
 .cursor/
 mutagen.yml
+**/__pycache__/

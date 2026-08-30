@@ -19,7 +19,9 @@ Im C2-Ordner doppelklicken:
 - macOS: `scripts/c2-sync/setup.command`
 - Windows: `scripts/c2-sync/setup.cmd`
 
-Das installiert Mutagen (und bei Bedarf rclone), fragt Deploy-Ordner, Host und Server-Pfad, legt auf dem Schreibtisch **C2 Galerie übertragen** an und registriert den Editor-Knopf **Zum Server**.
+Das installiert Mutagen (und bei Bedarf rclone), startet einen lokalen Sync-Helfer, fragt Deploy-Ordner, Host und Server-Pfad, legt auf dem Schreibtisch **C2 Galerie übertragen** an und aktiviert den Editor-Knopf **Zum Server**.
+
+Im Editor steht der Sync-Status sichtbar: nicht eingerichtet, keine Verbindung, oder bereit. **Zum Server** überträgt nur, wenn die Verbindung klappt — sonst erscheint die Fehlermeldung.
 
 Falls macOS das Setup blockiert: Rechtsklick auf `setup.command` → **Öffnen**.
 
