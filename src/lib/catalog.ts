@@ -2,40 +2,26 @@ import { newId } from "./id";
 import { uniqueSlug } from "./slug";
 import {
   cloneFilterSpec,
-  createSavedFilter,
-  emptyFilters,
-  filterSpecsEqual,
-  hasFilterOrder,
+  emptyFilterSpec,
   isEmptyFilterSpec,
+  parseFilterOrder,
   parseFilters,
+  parseFilterSpec,
   specFromLegacyTags,
   stripTagFromSpec,
-  withoutFilterOrder,
-  type FiltersFile,
   type SavedFilterSpec,
 } from "./saved-filter";
 
-export type {
-  FilterMode,
-  FiltersFile,
-  SavedFilter,
-  SavedFilterSpec,
-} from "./saved-filter";
+export type { FilterMode, SavedFilterSpec } from "./saved-filter";
 export {
   cloneFilterSpec,
-  createSavedFilter,
   cycleSpecTag,
   cycleSpecUntagged,
   emptyFilterSpec,
-  emptyFilters,
-  filterSpecsEqual,
-  hasFilterOrder,
   isEmptyFilterSpec,
-  parseFilters,
   specFromLegacyTags,
   stripTagFromSpec,
   toggleSpecRating,
-  withoutFilterOrder,
 } from "./saved-filter";
 
 export const CATALOG_VERSION = 1 as const;
@@ -125,12 +111,37 @@ export type TextsFile = {
 
 export type FeedItem = { type: "photo"; photo: Photo } | { type: "text"; text: TextTile };
 
-export type GalleryFilter = {
-  /** Gespeicherter Filter. Leer = alle Einträge. */
+export type GalleryFilter = SavedFilterSpec & {
+  /** Eigene Reihenfolge dieser Seite. Fehlt sie, gilt die allgemeine Sortierung. */
+  order?: string[];
+  /** Alte Kataloge: Verweis auf filters.json. Wird beim Laden in die Seite übernommen. */
   filterId?: string;
-  /** Alte Seiten: Pflicht-Tags (UND). Wird beim Laden in einen gespeicherten Filter überführt. */
-  tags?: string[];
 };
+
+export function emptyGalleryFilter(): GalleryFilter {
+  return emptyFilterSpec();
+}
+
+export function galleryFilterSpec(filter: GalleryFilter | undefined): SavedFilterSpec {
+  const spec = filter ?? emptyFilterSpec();
+  return {
+    tags: spec.tags ?? {},
+    untagged: spec.untagged ?? null,
+    ratings: spec.ratings ?? [],
+    query: spec.query ?? "",
+  };
+}
+
+export function hasPageOrder(filter: Pick<GalleryFilter, "order"> | null | undefined): boolean {
+  return Array.isArray(filter?.order);
+}
+
+export function withPageFilterSpec(filter: GalleryFilter, spec: SavedFilterSpec): GalleryFilter {
+  return {
+    ...galleryFilterSpec(spec),
+    ...(hasPageOrder(filter) ? { order: filter.order } : {}),
+  };
+}
 
 export type PageVisibility = "public" | "restricted" | "private";
 
@@ -298,7 +309,6 @@ export function parseGallerySecret(raw: unknown): string {
 export type Catalog = {
   photos: PhotosFile;
   tags: TagsFile;
-  filters: FiltersFile;
   site: SiteFile;
   texts: TextsFile;
 };
@@ -330,7 +340,7 @@ export function emptySite(): SiteFile {
         type: "gallery",
         title: "Alle",
         visibility: "public",
-        filter: {},
+        filter: emptyGalleryFilter(),
       },
       { id: "contact", type: "contact", title: "Contact", visibility: "public" },
     ],
@@ -341,7 +351,6 @@ export function emptyCatalog(): Catalog {
   return {
     photos: emptyPhotos(),
     tags: emptyTags(),
-    filters: emptyFilters(),
     site: emptySite(),
     texts: emptyTexts(),
   };
@@ -608,14 +617,23 @@ function parsePage(raw: unknown): SitePage | null {
 }
 
 function parseGalleryFilter(raw: unknown): GalleryFilter {
-  if (!isRecord(raw)) return {};
-  const filter: GalleryFilter = {};
-  if (typeof raw.filterId === "string" && raw.filterId.trim()) filter.filterId = raw.filterId.trim();
-  if (Array.isArray(raw.tags)) {
-    const tags = raw.tags.filter((item): item is string => typeof item === "string" && item.length > 0);
-    if (tags.length) filter.tags = tags;
+  if (!isRecord(raw)) return emptyGalleryFilter();
+  const filterId =
+    typeof raw.filterId === "string" && raw.filterId.trim() ? raw.filterId.trim() : undefined;
+  const order = parseFilterOrder(raw.order);
+  let spec: SavedFilterSpec;
+  if (isRecord(raw.spec)) {
+    spec = parseFilterSpec(raw.spec);
+  } else if (Array.isArray(raw.tags)) {
+    spec = specFromLegacyTags(raw.tags.filter((item): item is string => typeof item === "string" && item.length > 0));
+  } else {
+    spec = parseFilterSpec(raw);
   }
-  return filter;
+  return {
+    ...spec,
+    ...(order ? { order } : {}),
+    ...(filterId ? { filterId } : {}),
+  };
 }
 
 export function parseCatalog(
@@ -627,13 +645,15 @@ export function parseCatalog(
 ): Catalog {
   const photos = parsePhotos(photosRaw);
   const texts = parseTexts(textsRaw);
-  return migrateLegacyGalleryFilters({
-    tags: parseTags(tagsRaw),
-    photos,
-    texts: { version: 1, texts: texts.texts, items: normalizeItems(photos.photos, texts.texts, texts.items) },
-    site: parseSite(siteRaw),
-    filters: parseFilters(filtersRaw),
-  });
+  return migrateLegacyGalleryFilters(
+    {
+      tags: parseTags(tagsRaw),
+      photos,
+      texts: { version: 1, texts: texts.texts, items: normalizeItems(photos.photos, texts.texts, texts.items) },
+      site: parseSite(siteRaw),
+    },
+    filtersRaw,
+  );
 }
 
 export function rawSiteHasLegacyGalleryTags(raw: unknown): boolean {
@@ -641,6 +661,7 @@ export function rawSiteHasLegacyGalleryTags(raw: unknown): boolean {
   const walk = (pages: unknown[]): boolean => {
     for (const page of pages) {
       if (!isRecord(page)) continue;
+      if (isRecord(page.filter) && typeof page.filter.filterId === "string" && page.filter.filterId.trim()) return true;
       if (isRecord(page.filter) && Array.isArray(page.filter.tags) && page.filter.tags.length > 0) return true;
       if (Array.isArray(page.children) && walk(page.children)) return true;
     }
@@ -657,40 +678,40 @@ function mapGalleryPages(pages: SitePage[], map: (page: GalleryPage) => GalleryP
   });
 }
 
-export function migrateLegacyGalleryFilters(catalog: Catalog): Catalog {
-  const filters = [...catalog.filters.filters];
+export function updateGalleryPage(
+  pages: SitePage[],
+  id: string,
+  map: (page: GalleryPage) => GalleryPage,
+): SitePage[] {
+  return mapGalleryPages(pages, (page) => (page.id === id ? map(page) : page));
+}
 
-  const ensureFilter = (name: string, spec: SavedFilterSpec): string => {
-    const existing = filters.find((item) => filterSpecsEqual(item.spec, spec));
-    if (existing) return existing.id;
-    const created = createSavedFilter(name, filters, spec);
-    filters.push(created);
-    return created.id;
-  };
+function finalizeGalleryFilter(filter: GalleryFilter): GalleryFilter {
+  const spec = galleryFilterSpec(filter);
+  const order = parseFilterOrder(filter.order);
+  return { ...spec, ...(order ? { order } : {}) };
+}
 
+export function migrateLegacyGalleryFilters(catalog: Catalog, filtersRaw?: unknown): Catalog {
+  const saved = parseFilters(filtersRaw).filters;
   const pages = mapGalleryPages(catalog.site.pages, (page) => {
-    if (page.filter.filterId) {
-      if (!page.filter.tags?.length) return page;
-      return { ...page, filter: { filterId: page.filter.filterId } };
+    const id = page.filter.filterId;
+    if (id) {
+      const match = saved.find((item) => item.id === id);
+      if (match) {
+        return {
+          ...page,
+          filter: finalizeGalleryFilter({
+            ...cloneFilterSpec(match.spec),
+            order: page.filter.order ?? match.order,
+          }),
+        };
+      }
     }
-    const legacy = page.filter.tags ?? [];
-    if (!legacy.length) return { ...page, filter: {} };
-    const spec = specFromLegacyTags(legacy);
-    const names = legacy.map((id) => catalog.tags.tags.find((tag) => tag.id === id)?.name ?? id);
-    return { ...page, filter: { filterId: ensureFilter(names.join(" + ") || "Filter", spec) } };
+    return { ...page, filter: finalizeGalleryFilter(page.filter) };
   });
-
-  const next: Catalog = {
-    ...catalog,
-    filters: { version: 1, filters },
-    site: { ...catalog.site, pages },
-  };
-  if (
-    JSON.stringify(catalog.filters) === JSON.stringify(next.filters) &&
-    JSON.stringify(catalog.site.pages) === JSON.stringify(next.site.pages)
-  ) {
-    return catalog;
-  }
+  const next: Catalog = { ...catalog, site: { ...catalog.site, pages } };
+  if (JSON.stringify(catalog.site.pages) === JSON.stringify(next.site.pages)) return catalog;
   return next;
 }
 
@@ -746,13 +767,9 @@ export function feedItemMatchesSpec(item: FeedItem, spec: SavedFilterSpec, tags:
   return true;
 }
 
-export function resolvePageFilterSpec(page: GalleryPage, catalog: Catalog): SavedFilterSpec | undefined {
-  if (page.filter.filterId) {
-    const saved = catalog.filters?.filters.find((item) => item.id === page.filter.filterId);
-    return saved ? cloneFilterSpec(saved.spec) : undefined;
-  }
-  if (page.filter.tags?.length) return specFromLegacyTags(page.filter.tags);
-  return undefined;
+export function resolvePageFilterSpec(page: GalleryPage, _catalog?: Catalog): SavedFilterSpec | undefined {
+  const spec = galleryFilterSpec(page.filter);
+  return isEmptyFilterSpec(spec) ? undefined : spec;
 }
 
 /** Seite mit Filter: nur passende Einträge. Ohne Filter: alle. */
@@ -817,13 +834,12 @@ export function applyFeedOrder(items: FeedItem[], order?: string[] | null): Feed
   return out;
 }
 
-export function resolvePageFilterOrder(page: GalleryPage, catalog: Catalog): string[] | undefined {
-  if (!page.filter.filterId) return undefined;
-  return catalog.filters?.filters.find((item) => item.id === page.filter.filterId)?.order;
+export function resolvePageFilterOrder(page: GalleryPage): string[] | undefined {
+  return parseFilterOrder(page.filter.order);
 }
 
 export function catalogFeedForPage(catalog: Catalog, page: GalleryPage): FeedItem[] {
-  return catalogFeed(catalog, resolvePageFilterSpec(page, catalog), resolvePageFilterOrder(page, catalog));
+  return catalogFeed(catalog, resolvePageFilterSpec(page, catalog), resolvePageFilterOrder(page));
 }
 
 /** Öffentliche Galerie und Deploy: nur Einträge mit Tag publish. */
@@ -970,17 +986,12 @@ export function tagInUse(tagId: string, photos: Photo[], texts: TextTile[] = [])
   return photos.some((photo) => photo.tags.includes(tagId)) || texts.some((text) => text.tags.includes(tagId));
 }
 
-export function filterInUse(filterId: string, pages: SitePage[]): boolean {
-  for (const page of pages) {
-    if (page.type === "gallery" && page.filter.filterId === filterId) return true;
-    if (page.type === "group" && filterInUse(filterId, page.children)) return true;
-  }
-  return false;
-}
-
-export function stripTagFromFilters(filters: FiltersFile, tagId: string): FiltersFile {
-  return {
-    version: 1,
-    filters: filters.filters.map((item) => ({ ...item, spec: stripTagFromSpec(item.spec, tagId) })),
-  };
+export function stripTagFromPages(pages: SitePage[], tagId: string): SitePage[] {
+  return pages.map((page) => {
+    if (page.type === "gallery") {
+      return { ...page, filter: { ...page.filter, ...stripTagFromSpec(galleryFilterSpec(page.filter), tagId) } };
+    }
+    if (page.type === "group") return { ...page, children: stripTagFromPages(page.children, tagId) };
+    return page;
+  });
 }

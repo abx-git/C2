@@ -4,14 +4,17 @@ import { newId } from "@/lib/id";
 import {
   DEFAULT_LAYOUT,
   DEFAULT_PROTECTION,
+  emptyGalleryFilter,
   FADE_IN_DURATION_MAX,
   FADE_IN_DURATION_MIN,
+  galleryFilterSpec,
   GALLERY_BACKGROUNDS,
+  hasPageOrder,
   SLIDESHOW_INTERVAL_MAX,
   SLIDESHOW_INTERVAL_MIN,
   pageVisibility,
   photosForCover,
-  hasFilterOrder,
+  withPageFilterSpec,
   type Catalog,
   type GalleryPage,
   type GroupPage,
@@ -19,6 +22,7 @@ import {
   type Photo,
   type SitePage,
 } from "@/lib/catalog";
+import { FilterCriteriaBar } from "@/components/editor/filter-criteria";
 import { LayoutColumnsPicker } from "@/components/editor/layout-columns-picker";
 import { useEditorStore } from "@/store/editor-store";
 
@@ -37,13 +41,13 @@ export function SiteTreeEditor() {
   const protection = site.protection ?? DEFAULT_PROTECTION;
 
   return (
-    <div className="mx-auto w-full max-w-2xl">
+    <div className="mx-auto w-full max-w-4xl">
       <h2 className="mb-3 text-sm font-medium">Seitenstruktur</h2>
       <p className="mb-4 text-sm text-[var(--edit-muted)]">
-        Die Navigation folgt diesem Baum. Pro Galerie-Seite ein gespeicherter Filter: dann erscheinen nur passende
-        Bilder. Ändert sich der Filter, ändert sich die Auswahl mit. Die Reihenfolge kann pro Filter gesetzt werden,
-        sonst gilt die allgemeine Sortierung. „Alle“ zeigt die ganze Sammlung. Das Index-Bild erscheint auf der
-        Work-Übersicht. Sichtbarkeit: öffentlich in der Navigation, eingeschränkt nur per Link, privat nur im Editor.
+        Die Navigation folgt diesem Baum. Eine Gruppe ist ein Ordner — ihre Galerie-Seiten liegen darin. Welche Bilder
+        eine Seite zeigt, legt sie selbst fest (Tags, Sterne, Suche). Ohne Kriterien erscheinen alle Bilder. Eine eigene
+        Reihenfolge gilt nur für diese Seite, sonst die allgemeine Sortierung unter Bilder. Das Index-Bild erscheint auf
+        der Work-Übersicht. Sichtbarkeit: öffentlich in der Navigation, eingeschränkt nur per Link, privat nur im Editor.
         Eine Gruppe vererbt die strengere Stufe an ihre Seiten.
       </p>
       <label className="mb-3 block text-xs text-[var(--edit-muted)]">
@@ -78,12 +82,7 @@ export function SiteTreeEditor() {
         <button
           type="button"
           className="edit-btn"
-          onClick={() =>
-            setPages([
-              ...site.pages,
-              { id: newId(), type: "gallery", title: "Neue Seite", visibility: "public", filter: {} },
-            ])
-          }
+          onClick={() => setPages([...site.pages, newGalleryPage()])}
         >
           Galerie-Seite
         </button>
@@ -308,6 +307,97 @@ function ProtectionFields({
   );
 }
 
+function newGalleryPage(): GalleryPage {
+  return { id: newId(), type: "gallery", title: "Neue Seite", visibility: "public", filter: emptyGalleryFilter() };
+}
+
+function childPageCount(page: GroupPage): number {
+  return page.children.reduce((count, child) => {
+    if (child.type === "group") return count + childPageCount(child);
+    return count + 1;
+  }, 0);
+}
+
+function TypeBadge({ page }: { page: SitePage }) {
+  if (page.type === "group") {
+    return (
+      <span className="rounded bg-[var(--edit-ink)] px-1.5 py-0.5 text-[0.65rem] font-semibold uppercase tracking-wider text-[#f7f5f1]">
+        Gruppe
+      </span>
+    );
+  }
+  const label = page.type === "gallery" ? "Galerie-Seite" : page.type === "work" ? "Work" : "Contact";
+  return (
+    <span className="rounded border border-[var(--edit-line)] bg-white/80 px-1.5 py-0.5 text-[0.65rem] uppercase tracking-wide text-[var(--edit-muted)]">
+      {label}
+    </span>
+  );
+}
+
+function PageToolbar({
+  page,
+  index,
+  pages,
+  depth,
+  onChange,
+  move,
+}: {
+  page: SitePage;
+  index: number;
+  pages: SitePage[];
+  depth: number;
+  onChange: (pages: SitePage[]) => void;
+  move: (index: number, delta: number) => void;
+}) {
+  const groupCount = page.type === "group" ? childPageCount(page) : 0;
+  return (
+    <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+      <TypeBadge page={page} />
+      <input
+        className="edit-field max-w-xs"
+        value={page.title}
+        onChange={(event) => {
+          const next = [...pages];
+          next[index] = { ...page, title: event.target.value };
+          onChange(next);
+        }}
+      />
+      {page.type === "group" ? (
+        <span className="text-xs text-[var(--edit-muted)]">
+          {groupCount === 0 ? "noch keine Seiten" : `${groupCount} Seite${groupCount === 1 ? "" : "n"}`}
+        </span>
+      ) : null}
+      <VisibilityPicker
+        value={pageVisibility(page)}
+        onChange={(visibility) => {
+          const next = [...pages];
+          next[index] = { ...page, visibility };
+          onChange(next);
+        }}
+      />
+      <button type="button" className="edit-btn" onClick={() => move(index, -1)} disabled={index === 0}>
+        Hoch
+      </button>
+      <button
+        type="button"
+        className="edit-btn"
+        onClick={() => move(index, 1)}
+        disabled={index === pages.length - 1}
+      >
+        Runter
+      </button>
+      <button
+        type="button"
+        className="edit-btn"
+        onClick={() => onChange(pages.filter((_, i) => i !== index))}
+        disabled={depth === 0 && pages.length === 1}
+      >
+        Entfernen
+      </button>
+    </div>
+  );
+}
+
 function PageList({
   pages,
   catalog,
@@ -329,200 +419,144 @@ function PageList({
   };
 
   return (
-    <ul className="flex flex-col gap-2" style={{ marginLeft: depth ? 16 : 0 }}>
-      {pages.map((page, index) => (
-        <li key={page.id} className="rounded-xl border border-[var(--edit-line)] bg-[var(--edit-panel)] p-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <input
-              className="edit-field max-w-xs"
-              value={page.title}
-              onChange={(event) => {
-                const next = [...pages];
-                next[index] = { ...page, title: event.target.value };
-                onChange(next);
-              }}
-            />
-            <span className="text-[0.7rem] uppercase tracking-wide text-[var(--edit-muted)]">
-              {page.type === "gallery"
-                ? "Galerie"
-                : page.type === "group"
-                  ? "Gruppe"
-                  : page.type === "work"
-                    ? "Work"
-                    : "Contact"}
-            </span>
-            <VisibilityPicker
-              value={pageVisibility(page)}
-              onChange={(visibility) => {
-                const next = [...pages];
-                next[index] = { ...page, visibility };
-                onChange(next);
-              }}
-            />
-            <button type="button" className="edit-btn" onClick={() => move(index, -1)} disabled={index === 0}>
-              Hoch
-            </button>
-            <button
-              type="button"
-              className="edit-btn"
-              onClick={() => move(index, 1)}
-              disabled={index === pages.length - 1}
-            >
-              Runter
-            </button>
-            <button
-              type="button"
-              className="edit-btn"
-              onClick={() => onChange(pages.filter((_, i) => i !== index))}
-              disabled={depth === 0 && pages.length === 1}
-            >
-              Entfernen
-            </button>
-          </div>
-          {isGallery(page) ? (
-            <>
-            <div className="mt-3 flex flex-wrap items-center gap-1.5">
-              <label className="mr-2 text-xs text-[var(--edit-muted)]">
-                Jahr
-                <input
-                  className="edit-field ml-1 w-20"
-                  value={page.year ?? ""}
-                  onChange={(event) => {
-                    const next = [...pages];
-                    next[index] = { ...page, year: event.target.value || undefined };
-                    onChange(next);
-                  }}
-                />
-              </label>
-              <span className="mr-1 text-xs text-[var(--edit-muted)]">Filter:</span>
-              <button
-                type="button"
-                className={`rounded-full border px-2 py-0.5 text-xs ${
-                  !page.filter.filterId
-                    ? "border-[var(--edit-ink)] bg-[var(--edit-ink)] text-[#f7f5f1]"
-                    : "border-[var(--edit-line)]"
-                }`}
-                onClick={() => {
-                  const next = [...pages];
-                  next[index] = { ...page, filter: {} };
-                  onChange(next);
-                }}
-              >
-                Alle
-              </button>
-              {(catalog.filters?.filters ?? []).length === 0 ? (
-                <span className="text-xs text-[var(--edit-muted)]">keine Filter angelegt</span>
-              ) : (
-                (catalog.filters?.filters ?? []).map((item) => {
-                  const on = page.filter.filterId === item.id;
-                  return (
+    <ul className={`flex flex-col ${depth ? "gap-2" : "gap-3"}`}>
+      {pages.map((page, index) => {
+        const toolbar = (
+          <PageToolbar page={page} index={index} pages={pages} depth={depth} onChange={onChange} move={move} />
+        );
+        if (page.type === "group") {
+          return (
+            <li key={page.id}>
+              <article className="overflow-hidden rounded-2xl border border-[rgba(28,27,25,0.22)] border-l-4 border-l-[var(--edit-ink)] bg-[#ddd8d0] shadow-[0_1px_2px_rgba(28,27,25,0.06)]">
+                <header className="flex flex-wrap items-center gap-2 bg-[#cfc9bf] px-3 py-2.5">
+                  {toolbar}
+                </header>
+                <div className="p-3">
+                  <CoverPicker
+                    value={page.cover}
+                    photos={photosForCover(page, catalog)}
+                    emptyLabel="Automatisch (Seiten einzeln)"
+                    onChange={(cover) => {
+                      const next = [...pages];
+                      next[index] = { ...page, cover };
+                      onChange(next);
+                    }}
+                  />
+                  <div className="mt-3 rounded-xl bg-[var(--edit-bg)] p-3 ring-1 ring-inset ring-[rgba(28,27,25,0.08)]">
+                    <p className="mb-2 text-[0.7rem] font-medium uppercase tracking-wide text-[var(--edit-muted)]">
+                      Seiten in dieser Gruppe
+                    </p>
+                    {page.children.length === 0 ? (
+                      <p className="mb-2 text-xs text-[var(--edit-muted)]">Noch keine Seiten — unten anlegen.</p>
+                    ) : (
+                      <PageList
+                        pages={page.children}
+                        catalog={catalog}
+                        depth={depth + 1}
+                        onChange={(children) => {
+                          const next = [...pages];
+                          next[index] = { ...page, children } satisfies GroupPage;
+                          onChange(next);
+                        }}
+                      />
+                    )}
                     <button
-                      key={item.id}
                       type="button"
-                      className={`rounded-full border px-2 py-0.5 text-xs ${
-                        on ? "border-[var(--edit-ink)] bg-[var(--edit-ink)] text-[#f7f5f1]" : "border-[var(--edit-line)]"
-                      }`}
+                      className="edit-btn mt-2"
                       onClick={() => {
                         const next = [...pages];
-                        next[index] = { ...page, filter: on ? {} : { filterId: item.id } };
+                        next[index] = {
+                          ...page,
+                          children: [...page.children, newGalleryPage()],
+                        };
                         onChange(next);
                       }}
                     >
-                      {item.name}
+                      Seite in Gruppe
                     </button>
-                  );
-                })
-              )}
-              <button
-                type="button"
-                className="edit-btn ml-1"
-                title={
-                  page.filter.filterId
-                    ? "Älteste zuerst. Gilt nur für diesen Filter."
-                    : "Älteste zuerst. Danach per Ziehen in der Bilderliste ändern."
-                }
-                onClick={() => {
-                  const filterId = page.filter.filterId;
-                  const message = filterId
-                    ? "Bilder dieses Filters nach Aufnahmezeit sortieren (älteste zuerst)? Die Reihenfolge gilt nur für diesen Filter."
-                    : "Bilder dieser Seite nach Aufnahmezeit sortieren (älteste zuerst)? Die Reihenfolge kannst du danach unter Bilder wieder per Ziehen ändern.";
-                  if (!window.confirm(message)) return;
-                  useEditorStore.getState().sortGalleryByTakenAt(filterId);
-                }}
-              >
-                Nach Aufnahmezeit
-              </button>
-              {hasFilterOrder(
-                catalog.filters?.filters.find((item) => item.id === page.filter.filterId),
-              ) && page.filter.filterId ? (
-                <button
-                  type="button"
-                  className="edit-btn px-2 py-0.5 text-xs"
-                  title="Eigene Reihenfolge löschen und wieder die allgemeine nutzen"
-                  onClick={() => {
-                    const id = page.filter.filterId;
-                    if (id) useEditorStore.getState().clearFilterOrder(id);
-                  }}
-                >
-                  Reihenfolge zurücksetzen
-                </button>
+                  </div>
+                </div>
+              </article>
+            </li>
+          );
+        }
+        return (
+          <li key={page.id}>
+            <article className="rounded-xl border border-[var(--edit-line)] bg-[var(--edit-panel)] p-3">
+              <div className="flex flex-wrap items-center gap-2">{toolbar}</div>
+              {isGallery(page) ? (
+                <>
+                  <div className="mt-3 space-y-2 border-t border-[var(--edit-line)] pt-3">
+                    <label className="block text-xs text-[var(--edit-muted)]">
+                      Jahr
+                      <input
+                        className="edit-field mt-1 w-24"
+                        value={page.year ?? ""}
+                        onChange={(event) => {
+                          const next = [...pages];
+                          next[index] = { ...page, year: event.target.value || undefined };
+                          onChange(next);
+                        }}
+                      />
+                    </label>
+                    <div>
+                      <div className="mb-1.5 text-xs text-[var(--edit-muted)]">Bilder dieser Seite</div>
+                      <FilterCriteriaBar
+                        spec={galleryFilterSpec(page.filter)}
+                        onChange={(spec) => {
+                          const next = [...pages];
+                          next[index] = { ...page, filter: withPageFilterSpec(page.filter, spec) };
+                          onChange(next);
+                        }}
+                        tags={catalog.tags.tags}
+                      />
+                    </div>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <button
+                        type="button"
+                        className="edit-btn"
+                        title="Älteste zuerst. Die Reihenfolge gilt nur für diese Seite."
+                        onClick={() => {
+                          if (
+                            !window.confirm(
+                              "Bilder dieser Seite nach Aufnahmezeit sortieren (älteste zuerst)? Die Reihenfolge gilt nur für diese Seite.",
+                            )
+                          ) {
+                            return;
+                          }
+                          useEditorStore.getState().sortGalleryByTakenAt(page.id);
+                        }}
+                      >
+                        Nach Aufnahmezeit
+                      </button>
+                      {hasPageOrder(page.filter) ? (
+                        <button
+                          type="button"
+                          className="edit-btn px-2 py-0.5 text-xs"
+                          title="Eigene Reihenfolge löschen und wieder die allgemeine nutzen"
+                          onClick={() => useEditorStore.getState().clearPageOrder(page.id)}
+                        >
+                          Reihenfolge zurücksetzen
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
+                  <CoverPicker
+                    value={page.cover}
+                    photos={photosForCover(page, catalog)}
+                    emptyLabel="Automatisch (erstes Bild)"
+                    onChange={(cover) => {
+                      const next = [...pages];
+                      next[index] = { ...page, cover };
+                      onChange(next);
+                    }}
+                  />
+                </>
               ) : null}
-            </div>
-            <CoverPicker
-              value={page.cover}
-              photos={photosForCover(page, catalog)}
-              emptyLabel="Automatisch (erstes Bild)"
-              onChange={(cover) => {
-                const next = [...pages];
-                next[index] = { ...page, cover };
-                onChange(next);
-              }}
-            />
-            </>
-          ) : page.type === "group" ? (
-            <div className="mt-3">
-              <CoverPicker
-                value={page.cover}
-                photos={photosForCover(page, catalog)}
-                emptyLabel="Automatisch (Seiten einzeln)"
-                onChange={(cover) => {
-                  const next = [...pages];
-                  next[index] = { ...page, cover };
-                  onChange(next);
-                }}
-              />
-              <PageList
-                pages={page.children}
-                catalog={catalog}
-                depth={depth + 1}
-                onChange={(children) => {
-                  const next = [...pages];
-                  next[index] = { ...page, children } satisfies GroupPage;
-                  onChange(next);
-                }}
-              />
-              <button
-                type="button"
-                className="edit-btn mt-2"
-                onClick={() => {
-                  const next = [...pages];
-                  const group = page;
-                  next[index] = {
-                    ...group,
-                    children: [
-                      ...group.children,
-                      { id: newId(), type: "gallery", title: "Neue Seite", visibility: "public", filter: {} },
-                    ],
-                  };
-                  onChange(next);
-                }}
-              >
-                Seite in Gruppe
-              </button>
-            </div>
-          ) : null}
-        </li>
-      ))}
+            </article>
+          </li>
+        );
+      })}
     </ul>
   );
 }

@@ -192,7 +192,6 @@ export async function writeDeployFolder(opts: {
   await Promise.all([
     writeJsonFile(opts.dest, "data/photos.json", publicPhotos),
     writeJsonFile(opts.dest, "data/tags.json", published.tags),
-    writeJsonFile(opts.dest, "data/filters.json", published.filters),
     writeJsonFile(opts.dest, "data/site.json", publicSite),
     writeJsonFile(opts.dest, "data/texts.json", published.texts),
   ]);

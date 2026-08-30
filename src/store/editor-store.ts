@@ -2,31 +2,28 @@ import { create } from "zustand";
 import { BRAVE_FS_HELP, isBrave } from "@/lib/browser";
 import {
   catalogFeed,
-  cloneFilterSpec,
   createTag,
-  createSavedFilter,
   editorProtection,
   emptyCatalog,
   emptyTexts,
   ensurePublishTag,
   clampPhotoRating,
-  hasFilterOrder,
+  findPage,
+  hasPageOrder,
   isPublishTag,
   parseCatalog,
-  parseFilters,
   parseGallerySecret,
   GALLERY_SECRET_PATH,
+  resolvePageFilterOrder,
+  resolvePageFilterSpec,
   tagInUse,
-  filterInUse,
-  stripTagFromFilters,
+  stripTagFromPages,
   normalizeItems,
   rawSiteHasLegacyGalleryTags,
-  withoutFilterOrder,
+  updateGalleryPage,
   type Catalog,
   type FeedRef,
   type Photo,
-  type SavedFilter,
-  type SavedFilterSpec,
   type SiteFile,
   type SitePage,
   type Tag,
@@ -53,7 +50,7 @@ import {
   writeJsonFile,
 } from "@/lib/workspace";
 
-export type EditorTab = "photos" | "tags" | "filters" | "site" | "preview";
+export type EditorTab = "photos" | "tags" | "site" | "preview";
 
 export type ImportProgress = {
   current: number;
@@ -100,20 +97,16 @@ type EditorState = {
   updateText: (id: string, patch: Partial<Pick<TextTile, "title" | "body" | "tags">>) => void;
   addTextTile: () => string | null;
   setPhotosTag: (ids: string[], tagId: string, on: boolean) => void;
-  reorderPhotos: (fromId: string, toId: string, visibleIds: string[], filterId?: string | null) => void;
-  sortGalleryByTakenAt: (filterId?: string | null) => void;
-  setFilterOrder: (id: string, order: string[] | undefined) => void;
-  clearFilterOrder: (id: string) => void;
+  reorderPhotos: (fromId: string, toId: string, visibleIds: string[]) => void;
+  sortGalleryByTakenAt: (pageId?: string | null) => void;
+  setPageOrder: (pageId: string, order: string[] | undefined) => void;
+  clearPageOrder: (pageId: string) => void;
   deletePhoto: (id: string) => Promise<void>;
   deleteText: (id: string) => void;
   deleteItems: (ids: string[]) => Promise<void>;
   addTag: (name: string) => Tag | null;
   renameTag: (id: string, name: string) => void;
   deleteTag: (id: string, force?: boolean) => boolean;
-  addFilter: (name: string, spec?: SavedFilterSpec) => SavedFilter | null;
-  renameFilter: (id: string, name: string) => void;
-  updateFilterSpec: (id: string, spec: SavedFilterSpec) => void;
-  deleteFilter: (id: string, force?: boolean) => boolean;
   updateSite: (site: SiteFile) => void;
   setGalleryPassword: (password: string) => void;
   saveCatalog: () => Promise<void>;
@@ -224,9 +217,6 @@ async function ensureWorkspaceLayout(handle: FileSystemDirectoryHandle): Promise
   if (!photos) await writeJsonFile(handle, "data/photos.json", catalog.photos);
   if (!site || rawSiteHasLegacyGalleryTags(site)) await writeJsonFile(handle, "data/site.json", catalog.site);
   if (!texts) await writeJsonFile(handle, "data/texts.json", catalog.texts);
-  if (!filters || catalog.filters.filters.length !== parseFilters(filters).filters.length) {
-    await writeJsonFile(handle, "data/filters.json", catalog.filters);
-  }
 }
 
 function fileName(path: string): string {
@@ -747,20 +737,13 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     });
   },
 
-  reorderPhotos: (fromId, toId, visibleIds, filterId) => {
+  reorderPhotos: (fromId, toId, visibleIds) => {
     if (fromId === toId) return;
     const catalog = get().catalog;
     const selected = get().selectedPhotoIds;
     const moving = selected.includes(fromId) && selected.length > 1 ? visibleIds.filter((id) => selected.includes(id)) : [fromId];
     const nextVisible = moveVisibleIds(visibleIds, moving, toId);
     if (!nextVisible) return;
-    if (filterId) {
-      const filters = (catalog.filters?.filters ?? []).map((item) =>
-        item.id === filterId ? { ...item, order: nextVisible } : item,
-      );
-      set({ catalog: { ...catalog, filters: { version: 1, filters } }, dirty: true });
-      return;
-    }
     const items = normalizeItems(catalog.photos.photos, catalog.texts.texts, catalog.texts.items);
     const nextItems = applyVisibleOrder(items, visibleIds, nextVisible);
     set({
@@ -769,23 +752,24 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     });
   },
 
-  sortGalleryByTakenAt: (filterId) => {
+  sortGalleryByTakenAt: (pageId) => {
     const catalog = get().catalog;
-    const saved = filterId ? catalog.filters?.filters.find((item) => item.id === filterId) : undefined;
-    if (filterId && !saved) return;
-    const visibleIds = catalogFeed(catalog, saved?.spec, saved?.order).map((item) =>
+    const page = pageId ? findPage(catalog.site.pages, pageId) : null;
+    const gallery = page?.type === "gallery" ? page : null;
+    if (pageId && !gallery) return;
+    const spec = gallery ? resolvePageFilterSpec(gallery, catalog) : undefined;
+    const order = gallery ? resolvePageFilterOrder(gallery) : undefined;
+    const visibleIds = catalogFeed(catalog, spec, order).map((item) =>
       item.type === "photo" ? item.photo.id : item.text.id,
     );
     if (visibleIds.length < 2) return;
     const nextVisible = sortVisiblePhotosByTakenAt(visibleIds, catalog.photos.photos);
     if (nextVisible.every((id, index) => id === visibleIds[index])) {
-      if (filterId && !hasFilterOrder(saved)) {
-        get().setFilterOrder(filterId, nextVisible);
-      }
+      if (gallery && !hasPageOrder(gallery.filter)) get().setPageOrder(gallery.id, nextVisible);
       return;
     }
-    if (filterId) {
-      get().setFilterOrder(filterId, nextVisible);
+    if (gallery) {
+      get().setPageOrder(gallery.id, nextVisible);
       return;
     }
     const items = normalizeItems(catalog.photos.photos, catalog.texts.texts, catalog.texts.items);
@@ -798,18 +782,20 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     });
   },
 
-  setFilterOrder: (id, order) => {
+  setPageOrder: (pageId, order) => {
     const catalog = get().catalog;
-    const filters = (catalog.filters?.filters ?? []).map((item) => {
-      if (item.id !== id) return item;
-      if (order === undefined) return withoutFilterOrder(item);
-      return { ...item, order };
+    const pages = updateGalleryPage(catalog.site.pages, pageId, (page) => {
+      if (order === undefined) {
+        const { order: _ignored, ...rest } = page.filter;
+        return { ...page, filter: rest };
+      }
+      return { ...page, filter: { ...page.filter, order } };
     });
-    set({ catalog: { ...catalog, filters: { version: 1, filters } }, dirty: true });
+    set({ catalog: { ...catalog, site: { ...catalog.site, pages } }, dirty: true });
   },
 
-  clearFilterOrder: (id) => {
-    get().setFilterOrder(id, undefined);
+  clearPageOrder: (pageId) => {
+    get().setPageOrder(pageId, undefined);
   },
 
   deletePhoto: async (id) => {
@@ -905,83 +891,14 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       ...text,
       tags: text.tags.filter((tagId) => tagId !== id),
     }));
-    const stripLegacy = (pages: SitePage[]): SitePage[] =>
-      pages.map((page) => {
-        if (page.type === "gallery") {
-          const leftover = page.filter.tags?.filter((tagId) => tagId !== id);
-          return {
-            ...page,
-            filter: {
-              ...(page.filter.filterId ? { filterId: page.filter.filterId } : {}),
-              ...(leftover?.length ? { tags: leftover } : {}),
-            },
-          };
-        }
-        if (page.type === "group") {
-          return { ...page, children: stripLegacy(page.children) };
-        }
-        return page;
-      });
+    const stripLegacy = (pages: SitePage[]): SitePage[] => stripTagFromPages(pages, id);
     set({
       catalog: {
         ...catalog,
         photos: { version: 1, photos },
         texts: { ...catalog.texts, texts },
         tags: { version: 1, tags },
-        filters: stripTagFromFilters(catalog.filters, id),
         site: { ...catalog.site, pages: stripLegacy(catalog.site.pages) },
-      },
-      dirty: true,
-    });
-    return true;
-  },
-
-  addFilter: (name, spec) => {
-    const trimmed = name.trim();
-    if (!trimmed) return null;
-    const catalog = get().catalog;
-    const filter = createSavedFilter(trimmed, catalog.filters.filters, spec);
-    set({
-      catalog: { ...catalog, filters: { version: 1, filters: [...catalog.filters.filters, filter] } },
-      dirty: true,
-    });
-    return filter;
-  },
-
-  renameFilter: (id, name) => {
-    const trimmed = name.trim();
-    if (!trimmed) return;
-    const catalog = get().catalog;
-    const filters = catalog.filters.filters.map((item) => (item.id === id ? { ...item, name: trimmed } : item));
-    set({ catalog: { ...catalog, filters: { version: 1, filters } }, dirty: true });
-  },
-
-  updateFilterSpec: (id, spec) => {
-    const catalog = get().catalog;
-    const filters = catalog.filters.filters.map((item) =>
-      item.id === id ? { ...item, spec: cloneFilterSpec(spec) } : item,
-    );
-    set({ catalog: { ...catalog, filters: { version: 1, filters } }, dirty: true });
-  },
-
-  deleteFilter: (id, force = false) => {
-    const catalog = get().catalog;
-    if (!force && filterInUse(id, catalog.site.pages)) return false;
-    const filters = catalog.filters.filters.filter((item) => item.id !== id);
-    const clearId = (pages: SitePage[]): SitePage[] =>
-      pages.map((page) => {
-        if (page.type === "gallery") {
-          if (page.filter.filterId !== id) return page;
-          return { ...page, filter: {} };
-        }
-        if (page.type === "group") return { ...page, children: clearId(page.children) };
-        return page;
-      });
-    set({
-      catalog: {
-        ...catalog,
-        filters: { version: 1, filters },
-        site: { ...catalog.site, pages: clearId(catalog.site.pages) },
       },
       dirty: true,
     });
@@ -1021,7 +938,6 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         await Promise.all([
           writeJsonFile(handle, "data/photos.json", catalog.photos),
           writeJsonFile(handle, "data/tags.json", catalog.tags),
-          writeJsonFile(handle, "data/filters.json", catalog.filters),
           writeJsonFile(handle, "data/site.json", site),
           writeJsonFile(handle, "data/texts.json", catalog.texts),
         ]);

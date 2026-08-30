@@ -41,7 +41,6 @@ async function writeCatalogJs(outDir) {
   await mkdir(dataDir, { recursive: true });
   const stubs = {
     "tags.json": { version: 1, tags: [{ id: "publish", name: "publish", slug: "publish" }] },
-    "filters.json": { version: 1, filters: [] },
     "photos.json": { version: 1, photos: [] },
     "texts.json": { version: 1, texts: [], items: [] },
     "site.json": {
@@ -80,13 +79,13 @@ async function writeCatalogJs(outDir) {
     } catch {
       /* optional */
     }
-    let filters = { version: 1, filters: [] };
+    let filters;
     try {
       filters = JSON.parse(await readFile(join(dataDir, "filters.json"), "utf8"));
     } catch {
-      /* optional */
+      /* optional: alte Exporte mit filterId */
     }
-    const bootstrap = `window.__C2_CATALOG__=${JSON.stringify({ tags, photos, site, texts, filters })};`;
+    const bootstrap = `window.__C2_CATALOG__=${JSON.stringify({ tags, photos, site, texts, ...(filters ? { filters } : {}) })};`;
     await writeFile(join(dataDir, "catalog.js"), `${bootstrap}\n`);
     const indexPath = join(outDir, "index.html");
     if (existsSync(indexPath)) {

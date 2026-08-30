@@ -43,13 +43,12 @@ async function loadCatalogFromJson(prefix: string): Promise<Catalog> {
   return parseCatalog(tags, photos, site, texts, filters);
 }
 
-export function catalogBootstrapScript(catalog: Pick<Catalog, "tags" | "photos" | "site" | "texts" | "filters">): string {
+export function catalogBootstrapScript(catalog: Pick<Catalog, "tags" | "photos" | "site" | "texts">): string {
   const json = JSON.stringify({
     tags: catalog.tags,
     photos: catalog.photos,
     site: catalog.site,
     texts: catalog.texts,
-    filters: catalog.filters,
   }).replace(/</g, "\\u003c");
   return `window.__C2_CATALOG__=${json};`;
 }

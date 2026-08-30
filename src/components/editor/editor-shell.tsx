@@ -12,12 +12,10 @@ import { MetadataPanel } from "./metadata-panel";
 import { PhotoLibrary } from "./photo-library";
 import { SiteTreeEditor } from "./site-tree-editor";
 import { TagManager } from "./tag-manager";
-import { FilterManager } from "./filter-manager";
 
 const TABS: { id: EditorTab; label: string }[] = [
   { id: "photos", label: "Bilder" },
   { id: "tags", label: "Tags" },
-  { id: "filters", label: "Filter" },
   { id: "site", label: "Struktur" },
   { id: "preview", label: "Vorschau" },
 ];
@@ -34,6 +32,7 @@ export function EditorShell() {
   const workspaceLabel = useEditorStore((s) => s.workspaceLabel);
   const tab = useEditorStore((s) => s.tab);
   const setTab = useEditorStore((s) => s.setTab);
+  const activeTab: EditorTab = TABS.some((item) => item.id === tab) ? tab : "site";
   const dirty = useEditorStore((s) => s.dirty);
   const galleryPassword = useEditorStore((s) => s.galleryPassword);
   const message = useEditorStore((s) => s.message);
@@ -56,10 +55,10 @@ export function EditorShell() {
   }, [dirty, catalog, galleryPassword, saveCatalog]);
 
   useEffect(() => {
-    if (tab !== "preview" || status !== "ready") return;
+    if (activeTab !== "preview" || status !== "ready") return;
     const ids = toPublicCatalog(useEditorStore.getState().catalog).photos.photos.map((photo) => photo.id);
     void useEditorStore.getState().ensureDisplayUrls(ids);
-  }, [tab, status]);
+  }, [activeTab, status]);
 
   const resolveUrl = (photo: Photo, kind: "thumb" | "display") => {
     if (kind === "thumb") return thumbUrls[photo.id] ?? "";
@@ -77,7 +76,7 @@ export function EditorShell() {
           <button
             key={item.id}
             type="button"
-            className={`edit-btn ${tab === item.id ? "edit-btn-primary" : ""}`}
+            className={`edit-btn ${activeTab === item.id ? "edit-btn-primary" : ""}`}
             onClick={() => {
               if (status !== "ready") {
                 useEditorStore.setState({
@@ -147,22 +146,18 @@ export function EditorShell() {
             action="Ordner öffnen"
             onAction={() => void connectWorkspace()}
           />
-        ) : tab === "photos" ? (
+        ) : activeTab === "photos" ? (
           <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
             <PhotoLibrary />
             <div className="min-h-0 overflow-auto">
               {previewPhotoId ? null : <MetadataPanel />}
             </div>
           </div>
-        ) : tab === "tags" ? (
+        ) : activeTab === "tags" ? (
           <div className="min-h-0 flex-1 overflow-auto">
             <TagManager />
           </div>
-        ) : tab === "filters" ? (
-          <div className="min-h-0 flex-1 overflow-auto">
-            <FilterManager />
-          </div>
-        ) : tab === "site" ? (
+        ) : activeTab === "site" ? (
           <div className="min-h-0 flex-1 overflow-auto">
             <SiteTreeEditor />
           </div>

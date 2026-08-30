@@ -3,11 +3,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   catalogFeed,
-  cloneFilterSpec,
   DEFAULT_LAYOUT,
   emptyFilterSpec,
-  filterSpecsEqual,
-  hasFilterOrder,
   isEmptyFilterSpec,
   type FeedItem,
   type Photo,
@@ -70,16 +67,12 @@ export function PhotoLibrary() {
   const addTextTile = useEditorStore((s) => s.addTextTile);
   const deleteItems = useEditorStore((s) => s.deleteItems);
   const updateSite = useEditorStore((s) => s.updateSite);
-  const addFilter = useEditorStore((s) => s.addFilter);
-  const clearFilterOrder = useEditorStore((s) => s.clearFilterOrder);
   const importProgress = useEditorStore((s) => s.importProgress);
   const canWrite = useEditorStore((s) => s.canWrite);
-  const savedFilters = catalog.filters?.filters ?? [];
   const [draggingFiles, setDraggingFiles] = useState(false);
   const [dropTargetId, setDropTargetId] = useState<string | null>(null);
   const [dropAfter, setDropAfter] = useState(false);
   const [spec, setSpec] = useState<SavedFilterSpec>(() => emptyFilterSpec());
-  const [boundFilterId, setBoundFilterId] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const workAreaRef = useRef<HTMLDivElement>(null);
   const [workAreaWidth, setWorkAreaWidth] = useState(0);
@@ -88,17 +81,7 @@ export function PhotoLibrary() {
   const clickTimer = useRef<number | null>(null);
   const fileInsertBeforeRef = useRef<string | null>(null);
 
-  const matchingSaved = useMemo(() => {
-    if (boundFilterId) {
-      const bound = savedFilters.find((item) => item.id === boundFilterId);
-      if (bound && filterSpecsEqual(spec, bound.spec)) return bound;
-    }
-    return savedFilters.find((item) => filterSpecsEqual(spec, item.spec));
-  }, [boundFilterId, savedFilters, spec]);
-  const visible = useMemo(
-    () => catalogFeed(catalog, spec, matchingSaved?.order),
-    [spec, catalog, matchingSaved],
-  );
+  const visible = useMemo(() => catalogFeed(catalog, spec), [spec, catalog]);
 
   const visibleIds = visible.map(itemId);
   const visiblePhotos = visible.flatMap((item) => (item.type === "photo" ? [item.photo] : []));
@@ -238,11 +221,7 @@ export function PhotoLibrary() {
             {filterActive ? `${visible.length} von ${photos.length + textCount}` : `${photos.length} Bild${photos.length === 1 ? "" : "er"}`}
             {textCount ? ` · ${textCount} Text` : ""}
             {selectedPhotoIds.length > 1 ? ` · ${selectedPhotoIds.length} ausgewählt` : ""}
-            {photos.length + textCount > 1
-              ? matchingSaved
-                ? ` · ziehen sortiert „${matchingSaved.name}“`
-                : " · ziehen zum Sortieren"
-              : ""}
+            {photos.length + textCount > 1 ? " · ziehen zum Sortieren" : ""}
             {importProgress
               ? ` · Import ${importProgress.current}/${importProgress.total}: ${importProgress.name}`
               : ""}
@@ -290,75 +269,9 @@ export function PhotoLibrary() {
             }}
           />
         </div>
-        <div className="space-y-1.5">
-          <div className="flex flex-wrap items-center gap-1.5">
-            <span className="mr-1 text-xs text-[var(--edit-muted)]">Filter:</span>
-            <FilterCriteriaBar
-              spec={spec}
-              onChange={(next) => {
-                setSpec(next);
-                if (isEmptyFilterSpec(next)) setBoundFilterId(null);
-              }}
-              tags={tags}
-              className="contents"
-            />
-          </div>
-          <div className="flex flex-wrap items-center gap-1.5">
-            <span className="mr-1 text-xs text-[var(--edit-muted)]">Gespeichert:</span>
-            {savedFilters.length === 0 ? (
-              <span className="text-xs text-[var(--edit-muted)]">noch keine Filter</span>
-            ) : (
-              savedFilters.map((item) => {
-                const on = matchingSaved?.id === item.id;
-                return (
-                  <button
-                    key={item.id}
-                    type="button"
-                    title="Kriterien dieses Filters übernehmen"
-                    className={`rounded-full border px-2 py-0.5 text-xs ${
-                      on
-                        ? "border-[var(--edit-ink)] bg-[var(--edit-ink)] text-[#f7f5f1]"
-                        : "border-[var(--edit-line)] bg-[var(--edit-panel)]"
-                    }`}
-                    onClick={() => {
-                      setBoundFilterId(item.id);
-                      setSpec(cloneFilterSpec(item.spec));
-                    }}
-                  >
-                    {item.name}
-                  </button>
-                );
-              })
-            )}
-            <button
-              type="button"
-              className="edit-btn ml-1 px-2 py-0.5 text-xs"
-              disabled={!canWrite || !filterActive || Boolean(matchingSaved)}
-              title={
-                matchingSaved
-                  ? `Bereits gespeichert als „${matchingSaved.name}“`
-                  : "Aktuelle Kriterien als Filter speichern"
-              }
-              onClick={() => {
-                const name = window.prompt("Name für diesen Filter");
-                if (!name?.trim()) return;
-                addFilter(name, spec);
-              }}
-            >
-              Speichern
-            </button>
-            {matchingSaved && hasFilterOrder(matchingSaved) ? (
-              <button
-                type="button"
-                className="edit-btn px-2 py-0.5 text-xs"
-                disabled={!canWrite}
-                title="Eigene Reihenfolge dieses Filters löschen und wieder die allgemeine nutzen"
-                onClick={() => clearFilterOrder(matchingSaved.id)}
-              >
-                Reihenfolge zurücksetzen
-              </button>
-            ) : null}
-          </div>
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="mr-1 text-xs text-[var(--edit-muted)]">Ansicht:</span>
+          <FilterCriteriaBar spec={spec} onChange={setSpec} tags={tags} className="contents" />
         </div>
         <LayoutColumnsPicker
           value={(catalog.site.layout ?? DEFAULT_LAYOUT).columns}
@@ -440,7 +353,7 @@ export function PhotoLibrary() {
                   event.stopPropagation();
                   const fromId = event.dataTransfer.getData("text/plain");
                   setDropTargetId(null);
-                  if (fromId) reorderPhotos(fromId, id, visibleIds, matchingSaved?.id);
+                  if (fromId) reorderPhotos(fromId, id, visibleIds);
                 }}
                 onDragEnd={() => {
                   reordering.current = false;
