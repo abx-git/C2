@@ -4,50 +4,30 @@ Lokale Fotogalerie. Katalog und Originale bleiben auf dem Rechner.
 
 - Editor lokal: `npm run dev` → [http://localhost:3000](http://localhost:3000)
 - Editor GitHub Pages: [https://abx-git.github.io/C2](https://abx-git.github.io/C2) (nur die App, ohne Bilddaten)
-- Öffentliche Galerie: im Editor **Deploy-Ordner** erzeugen, `index.html` öffnen oder den Ordner per Mutagen auf den Server legen
+- Öffentliche Galerie: im Editor **Deploy-Ordner** erzeugen, dann **Zum Server** (einmalig `scripts/c2-sync/setup` doppelklicken)
 
 `/edit` bleibt als Alias und leitet auf den Editor um.
 
-## Deploy auf den Server (Mutagen)
+## Deploy auf den Server
 
-C2 schreibt nur einen lokalen Ordner. Die Übertragung macht Mutagen. Den Snapshot in ein **eigenes** Remote-Verzeichnis legen, nicht ins Webroot einer anderen Site.
+C2 schreibt nur einen lokalen Ordner. Die Übertragung macht ein Sync-Skript auf dem Rechner: Mutagen, wenn der Host eine SSH-Shell erlaubt, sonst rclone (SFTP-only, z. B. Strato).
 
-### 1. Konfiguration
+### Einmalig einrichten
 
-SSH-Host in `~/.ssh/config` eintragen. Mutagen installieren, falls nötig: `brew install mutagen-io/mutagen/mutagen`.
+Im C2-Ordner doppelklicken:
 
-Vorlage kopieren und **Alpha** (lokaler Deploy-Ordner) sowie **Beta** (`SSH-Alias:Remote-Pfad`) setzen:
+- macOS: `scripts/c2-sync/setup.command`
+- Windows: `scripts/c2-sync/setup.cmd`
 
-```bash
-cp mutagen.yml.example mutagen.yml
-```
+Das installiert Mutagen (und bei Bedarf rclone), fragt Deploy-Ordner, Host und Server-Pfad, legt auf dem Schreibtisch **C2 Galerie übertragen** an und registriert den Editor-Knopf **Zum Server**.
 
-`one-way-safe` löscht auf dem Server nichts extra. Soll der Server exakt dem Deploy-Ordner entsprechen, in der YAML `mode: "one-way-replica"` — nur in diesem Galerie-Ordner.
+Falls macOS das Setup blockiert: Rechtsklick auf `setup.command` → **Öffnen**.
 
-Ordner anlegen, die in der YAML stehen:
+### Alltag
 
-```bash
-mkdir -p ~/c2-deploy
-ssh HOST 'mkdir -p httpdocs/galerie'
-ssh -o BatchMode=yes HOST 'echo ok'
-```
+1. Im Editor **Deploy-Ordner** in denselben lokalen Ordner schreiben.
+2. **Zum Server** klicken oder die Desktop-Verknüpfung.
 
-`mutagen.yml` ist gitignoriert (lokale Hostnamen).
+Die lokale Konfiguration liegt in `~/.c2-sync/` (Windows: `%USERPROFILE%\.c2-sync\`) und kommt nicht ins Git.
 
-### 2. Start
-
-```bash
-mutagen daemon start
-mutagen project start
-```
-
-### 3. Alltag
-
-In C2 immer in denselben Deploy-Ordner schreiben, dann:
-
-```bash
-mutagen project list
-mutagen project flush
-```
-
-Nach dem Login bei Bedarf nur `mutagen daemon start` — die Session bleibt in der Konfiguration.
+`one-way-replica` bzw. `rclone sync` macht den Server-Ordner zum Abbild des Deploy-Ordners. In Strato die Domain-Dokumentenwurzel auf denselben Unterordner setzen (Standard: `likibox`).

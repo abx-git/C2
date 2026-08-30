@@ -1,4 +1,5 @@
-# Kopie nach mutagen.yml, HOST und Pfade anpassen, dann: mutagen daemon start && mutagen project start
+# Kopie nach mutagen.yml nur noch für manuelle Mutagen-Projekte.
+# Bevorzugt: einmal scripts/c2-sync/setup.command bzw. setup.cmd doppelklicken.
 sync:
   c2-gallery:
     alpha: "~/c2-deploy"

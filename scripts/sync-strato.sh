@@ -1,7 +1,7 @@
 #!/bin/sh
 # Strato SSH is SFTP-only (no shell), so Mutagen cannot run an agent there.
-# Syncs into a subdirectory. In Strato Kundencenter, set the domain's
-# document root / Zielverzeichnis to that folder (default: /likibox).
+# Alltägliche Übertragung: einmal scripts/c2-sync/setup, danach „Zum Server“.
+# Dieses Skript bleibt als direkter rclone-Aufruf nutzbar.
 set -e
 SRC="${C2_DEPLOY:-/Users/andreas.bergmann/Documents/c2.site/deploy6}"
 SUBDIR="${C2_STRATO_SUBDIR:-likibox}"

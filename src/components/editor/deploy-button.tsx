@@ -6,6 +6,15 @@ import { writeDeployFolder } from "@/lib/deploy";
 import { pickDirectory, supportsDirectoryPicker } from "@/lib/workspace";
 import { useEditorStore } from "@/store/editor-store";
 
+function requestServerTransfer() {
+  const link = document.createElement("a");
+  link.href = "c2sync://transfer";
+  link.style.display = "none";
+  document.body.appendChild(link);
+  link.click();
+  window.setTimeout(() => link.remove(), 500);
+}
+
 export function DeployButton() {
   const status = useEditorStore((s) => s.status);
   const catalog = useEditorStore((s) => s.catalog);
@@ -23,7 +32,7 @@ export function DeployButton() {
       : "Schreibe…";
 
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex flex-wrap items-center gap-2">
       <button
         type="button"
         className="edit-btn-primary edit-btn"
@@ -63,7 +72,7 @@ export function DeployButton() {
               ? ` ${result.skipped} unverändert übersprungen.`
               : "";
             setInfo(
-              `${appNote} ${result.photoCount} Bild${result.photoCount === 1 ? "" : "er"}.${protectNote ? ` ${protectNote}` : ""}${skipNote}`,
+              `${appNote} ${result.photoCount} Bild${result.photoCount === 1 ? "" : "er"}.${protectNote ? ` ${protectNote}` : ""}${skipNote} Danach „Zum Server“ oder die Desktop-Verknüpfung.`,
             );
           } catch (err) {
             setInfo(err instanceof Error ? err.message : "Deploy fehlgeschlagen");
@@ -74,6 +83,31 @@ export function DeployButton() {
         }}
       >
         {busy ? busyLabel : "Deploy-Ordner"}
+      </button>
+      <button
+        type="button"
+        className="edit-btn"
+        disabled={busy}
+        onClick={() => {
+          requestServerTransfer();
+          setInfo(
+            "Übertragung gestartet. Wenn nichts passiert: einmal scripts/c2-sync/setup.command (Mac) bzw. setup.cmd (Windows) doppelklicken.",
+          );
+        }}
+      >
+        Zum Server
+      </button>
+      <button
+        type="button"
+        className="edit-btn"
+        disabled={busy}
+        onClick={() => {
+          setInfo(
+            "Einmalig Setup doppelklicken: Mac scripts/c2-sync/setup.command, Windows scripts/c2-sync/setup.cmd. Danach diesen Knopf oder die Desktop-Verknüpfung „C2 Galerie übertragen“.",
+          );
+        }}
+      >
+        Sync einrichten
       </button>
       {info ? <span className="max-w-md text-xs text-[var(--edit-muted)]">{info}</span> : null}
       {!supportsDirectoryPicker() ? (
