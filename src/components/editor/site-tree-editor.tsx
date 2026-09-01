@@ -79,9 +79,8 @@ export function SiteTreeEditor() {
         />
       </label>
       <p className="mb-5 text-xs text-[var(--edit-muted)]">
-        Beispiel „rotterdam“ erscheint unter /rotterdam/. „Zum Server“ legt rotterdam.deploy
-        neben der Hauptgalerie an — dafür den übergeordneten Ordner wählen (z. B. c2.site),
-        nicht den Projektordner.
+        Beispiel „rotterdam“ erscheint unter /rotterdam/. Den lokalen Ordner wählst du
+        im Editor unter „Zum Server“ (übergeordneter Ordner, z. B. c2.site) — nicht im Setup.
       </p>
       <label className="mb-3 block text-xs text-[var(--edit-muted)]">
         Server-Host

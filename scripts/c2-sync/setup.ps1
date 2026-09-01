@@ -30,29 +30,27 @@ function Ask-Folder($prompt) {
   return $d.SelectedPath
 }
 
+$confPath = Join-Path $SyncHome "config"
+$hadConfig = Test-Path $confPath
+if ($hadConfig) {
+  Write-Host "Bestehende Config bleibt. rclone wird bereitgestellt."
+  $deploy = Join-Path $env:USERPROFILE "Documents\c2.site\deploy6"
+} else {
 $ok = [System.Windows.Forms.MessageBox]::Show(
-  "C2 richtet die Server-Übertragung ein.`n`n1. Mutagen wird lokal installiert (bei reinem SFTP-Host rclone).`n2. Danach liegt auf dem Desktop „C2 Galerie übertragen“.`n3. Im Editor erscheint der Knopf „Zum Server“.",
+  "C2 richtet die Übertragung auf den Likibox-Server ein.`n`nDer lokale Ordner kommt aus dem Editor (Zum Server), nicht aus diesem Setup.",
   "C2 Setup",
   "OKCancel",
   "Information"
 )
 if ($ok -ne [System.Windows.Forms.DialogResult]::OK) { Die "Abgebrochen." }
 
-$defaultDeploy = @(
+$deploy = @(
   (Join-Path $env:USERPROFILE "Documents\c2.site\deploy6"),
   (Join-Path $env:USERPROFILE "c2-deploy"),
   (Join-Path $env:USERPROFILE "Documents\c2-deploy")
 ) | Where-Object { Test-Path $_ } | Select-Object -First 1
-
-if ($defaultDeploy) {
-  $deploy = Ask-Text "Lokaler Deploy-Ordner:" $defaultDeploy
-} else {
-  $deploy = Ask-Folder "Welcher lokale Deploy-Ordner soll auf den Server?"
+if (-not $deploy) { $deploy = Join-Path $env:USERPROFILE "Documents\c2.site\deploy6" }
 }
-New-Item -ItemType Directory -Force -Path $deploy | Out-Null
-
-$hostName = Ask-Text "SSH-Host (Name aus .ssh\config oder user@server):" "c2-strato"
-$remote = (Ask-Text "Ordner auf dem Server (Dokumentenwurzel, z. B. likibox):" "likibox").TrimStart("/")
 
 function Install-Mutagen {
   if (Get-Command mutagen -ErrorAction SilentlyContinue) {
@@ -73,8 +71,12 @@ function Install-Mutagen {
 }
 
 function Install-Rclone {
-  if (Get-Command rclone -ErrorAction SilentlyContinue) {
-    Write-Host "rclone ist schon da: $((Get-Command rclone).Source)"
+  $env:PATH = "$Bin;C:\Program Files\rclone;$env:LOCALAPPDATA\Programs\rclone;$env:PATH"
+  $existing = Get-Command rclone -ErrorAction SilentlyContinue
+  if ($existing) {
+    Write-Host "rclone ist schon da: $($existing.Source)"
+    $dest = Join-Path $Bin "rclone.exe"
+    if (-not (Test-Path $dest)) { Copy-Item $existing.Source $dest -Force }
     return
   }
   $arch = if ($env:PROCESSOR_ARCHITECTURE -eq "ARM64") { "windows-arm64" } else { "windows-amd64" }
@@ -90,9 +92,17 @@ function Install-Rclone {
 }
 
 Write-Host "Werkzeuge installieren…"
-Install-Mutagen
+Install-Rclone
+if (-not $hadConfig) { Install-Mutagen }
 
-$method = "mutagen"
+$method = "rclone"
+$hostName = "c2-strato"
+$remote = "likibox"
+$rcloneRemote = "c2-strato"
+if (-not $hadConfig) {
+$hostName = Ask-Text "SSH-Host (Name aus .ssh\config oder user@server):" "c2-strato"
+$remote = (Ask-Text "Ordner auf dem Server (Dokumentenwurzel, z. B. likibox):" "likibox").TrimStart("/")
+
 Write-Host "SSH-Befehl auf $hostName prüfen…"
 $sshOk = $false
 if (Get-Command ssh -ErrorAction SilentlyContinue) {
@@ -105,10 +115,10 @@ if (Get-Command ssh -ErrorAction SilentlyContinue) {
 $rcloneRemote = ""
 if ($sshOk) {
   Write-Host "SSH-Shell vorhanden → Mutagen."
+  $method = "mutagen"
 } else {
   Write-Host "Kein SSH-Befehl (typisch SFTP-only) → rclone."
   $method = "rclone"
-  Install-Rclone
   $remotes = @()
   try { $remotes = & rclone listremotes } catch { }
   if ($remotes -contains "c2-strato:") {
@@ -136,6 +146,7 @@ $utf8 = New-Object System.Text.UTF8Encoding $false
   ),
   $utf8
 )
+}
 
 Copy-Item (Join-Path $Here "transfer.ps1") (Join-Path $SyncHome "transfer.ps1") -Force
 Copy-Item (Join-Path $Here "agent.ps1") (Join-Path $SyncHome "agent.ps1") -Force
@@ -175,20 +186,8 @@ $cmdKey = Join-Path $root "shell\open\command"
 New-Item -Path $cmdKey -Force | Out-Null
 Set-ItemProperty $cmdKey "(default)" "`"$launch`""
 
-if ($method -eq "mutagen") {
-  & mutagen daemon start | Out-Null
-  try { & mutagen sync terminate c2-gallery | Out-Null } catch { }
-  & mutagen sync create --name c2-gallery --sync-mode one-way-replica --default-file-mode-beta 0644 --default-directory-mode-beta 0755 --ignore ".DS_Store" $deploy "${hostName}:${remote}"
-  if ($LASTEXITCODE -ne 0) { Die "Mutagen-Sitzung konnte nicht angelegt werden. SSH-Zugang prüfen." }
-  Write-Host "Erste Übertragung…"
-  & mutagen sync flush c2-gallery
-} else {
-  Write-Host "Erste Übertragung…"
-  & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $SyncHome "transfer.ps1")
-}
-
 [System.Windows.Forms.MessageBox]::Show(
-  "Einrichtung fertig.`n`nÜbertragen:`n• Desktop: „C2 Galerie übertragen“`n• Im C2-Editor: „Zum Server“`n`nMethode: $method`nOrdner: $deploy`nZiel: ${hostName}:${remote}",
+  "rclone ist bereit. Der lokale Ordner kommt aus dem Editor (Zum Server). Ziel ist der Likibox-Server.",
   "C2 Setup",
   "OK",
   "Information"

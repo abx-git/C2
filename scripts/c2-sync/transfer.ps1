@@ -4,7 +4,7 @@ $SyncHome = if ($env:C2_SYNC_HOME) { $env:C2_SYNC_HOME } else { Join-Path $env:U
 $Conf = Join-Path $SyncHome "config"
 $Bin = Join-Path $SyncHome "bin"
 $Last = Join-Path $SyncHome "last.json"
-$env:PATH = "$Bin;$env:PATH"
+$env:PATH = "$Bin;C:\Program Files\rclone;$env:LOCALAPPDATA\Programs\rclone;$env:PATH"
 
 function Record-Last($ok, $error) {
   New-Item -ItemType Directory -Force -Path $SyncHome | Out-Null
@@ -96,7 +96,12 @@ Get-ChildItem -Path $deploy -Recurse -Force | ForEach-Object {
 
 $method = $cfg["method"]
 if ($method -eq "rclone") {
-  if (-not (Get-Command rclone -ErrorAction SilentlyContinue)) { Fail "rclone fehlt. Setup erneut ausführen." }
+  $env:PATH = "$Bin;C:\Program Files\rclone;$env:LOCALAPPDATA\Programs\rclone;$env:PATH"
+  $rcloneCmd = Get-Command rclone -ErrorAction SilentlyContinue
+  if ($rcloneCmd -and -not (Test-Path (Join-Path $Bin "rclone.exe"))) {
+    Copy-Item $rcloneCmd.Source (Join-Path $Bin "rclone.exe") -Force
+  }
+  if (-not (Get-Command rclone -ErrorAction SilentlyContinue)) { Fail "rclone ist nicht verfügbar." }
   $remoteName = if ($cfg["rclone_remote"]) { $cfg["rclone_remote"] } else { "c2-sync" }
   $dest = "${remoteName}:$remote"
   Write-Host "rclone → $dest"

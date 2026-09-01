@@ -1,14 +1,18 @@
 #!/bin/bash
-# Einmaliges Setup: Mutagen (oder rclone bei SFTP-only) installieren und C2-Sync einrichten.
+# Einmaliges Setup bzw. Reparatur: rclone/Mutagen bereitstellen, Helfer starten.
+# Den lokalen Deploy-Ordner fragt das Setup nicht ab — der kommt aus dem Editor.
 set -euo pipefail
 
 MUTAGEN_VERSION="${C2_MUTAGEN_VERSION:-0.18.1}"
 SYNC_HOME="${C2_SYNC_HOME:-$HOME/.c2-sync}"
 BIN="$SYNC_HOME/bin"
 HERE="$(cd "$(dirname "$0")" && pwd)"
+CONF="$SYNC_HOME/config"
 
 mkdir -p "$BIN" "$SYNC_HOME"
-export PATH="$BIN:/opt/homebrew/bin:/usr/local/bin:$PATH"
+# shellcheck source=env.sh
+. "$HERE/env.sh"
+c2_sync_env
 
 die() {
   echo "$1" >&2
@@ -32,70 +36,29 @@ end try
 APPLESCRIPT
 }
 
-ask_folder() {
-  local prompt="$1"
-  osascript <<APPLESCRIPT
-try
-  return POSIX path of (choose folder with prompt "$prompt")
-on error number -128
-  error "cancelled"
-end try
-APPLESCRIPT
-}
-
-confirm() {
-  local prompt="$1"
-  osascript <<APPLESCRIPT
-try
-  display dialog "$prompt" buttons {"Abbrechen", "OK"} default button "OK"
-  return "ok"
-on error number -128
-  error "cancelled"
-end try
-APPLESCRIPT
-}
-
 trim() {
   printf '%s' "$1" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s|/*$||'
 }
 
-if ! command -v osascript >/dev/null 2>&1; then
-  die "Dieses Setup ist für macOS."
-fi
-
-confirm "C2 richtet die Server-Übertragung ein.
-
-1. Mutagen wird lokal installiert (bei reinem SFTP-Host rclone).
-2. Danach liegt auf dem Schreibtisch „C2 Galerie übertragen“.
-3. Im Editor erscheint der Knopf „Zum Server“." >/dev/null
-
-default_deploy=""
-for candidate in \
-  "$HOME/Documents/c2.site/deploy6" \
-  "$HOME/c2-deploy" \
-  "$HOME/Documents/c2-deploy"; do
-  if [ -d "$candidate" ]; then
-    default_deploy="$candidate"
-    break
-  fi
-done
-
-if [ -n "$default_deploy" ]; then
-  deploy="$(ask_text "Lokaler Deploy-Ordner:" "$default_deploy" || true)"
-else
-  deploy="$(ask_folder "Welcher lokale Deploy-Ordner soll auf den Server?" || true)"
-fi
-[ -n "${deploy:-}" ] || die "Abgebrochen."
-deploy="$(trim "$deploy")"
-mkdir -p "$deploy"
-
-host="$(ask_text "SSH-Host (Name aus ~/.ssh/config oder user@server):" "c2-strato" || true)"
-[ -n "${host:-}" ] || die "Abgebrochen."
-host="$(trim "$host")"
-
-remote="$(ask_text "Ordner auf dem Server (Dokumentenwurzel, z. B. likibox):" "likibox" || true)"
-[ -n "${remote:-}" ] || die "Abgebrochen."
-remote="$(trim "$remote" | sed 's|^/||')"
+read_config() {
+  method=""
+  deploy=""
+  host=""
+  remote=""
+  rclone_remote=""
+  [ -f "$CONF" ] || return 1
+  while IFS='=' read -r key value || [ -n "$key" ]; do
+    case "$key" in
+      "" | \#*) continue ;;
+      method) method=$value ;;
+      deploy) deploy=$value ;;
+      host) host=$value ;;
+      remote) remote=$value ;;
+      rclone_remote) rclone_remote=$value ;;
+    esac
+  done <"$CONF"
+  return 0
+}
 
 install_mutagen() {
   if command -v mutagen >/dev/null 2>&1; then
@@ -120,82 +83,13 @@ install_mutagen() {
   rm -rf "$tmp"
 }
 
-install_rclone() {
-  if command -v rclone >/dev/null 2>&1; then
-    echo "rclone ist schon da: $(command -v rclone)"
-    return
-  fi
-  local arch
-  case "$(uname -m)" in
-    arm64) arch="osx-arm64" ;;
-    *) arch="osx-amd64" ;;
-  esac
-  echo "rclone wird geladen…"
-  local tmp zip
-  tmp="$(mktemp -d)"
-  zip="$tmp/rclone.zip"
-  curl -fsSL "https://downloads.rclone.org/rclone-current-${arch}.zip" -o "$zip"
-  unzip -q "$zip" -d "$tmp"
-  local exe
-  exe="$(find "$tmp" -name rclone -type f | head -1)"
-  [ -n "$exe" ] || die "rclone-Archiv unvollständig."
-  mv "$exe" "$BIN/rclone"
-  chmod +x "$BIN/rclone"
-  rm -rf "$tmp"
+copy_scripts() {
+  cp "$HERE/env.sh" "$SYNC_HOME/env.sh"
+  cp "$HERE/transfer.sh" "$SYNC_HOME/transfer.sh"
+  cp "$HERE/agent.py" "$SYNC_HOME/agent.py"
+  cp "$HERE/c2sync-macos.sh" "$SYNC_HOME/c2sync-macos.sh"
+  chmod +x "$SYNC_HOME/transfer.sh" "$HERE/transfer.sh" "$SYNC_HOME/c2sync-macos.sh"
 }
-
-echo "Werkzeuge installieren…"
-install_mutagen
-
-method="mutagen"
-echo "SSH-Befehl auf ${host} prüfen…"
-if ! command -v ssh >/dev/null 2>&1; then
-  echo "Kein ssh → rclone."
-  method="rclone"
-  install_rclone
-elif ssh -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new "$host" true >/dev/null 2>&1; then
-  echo "SSH-Shell vorhanden → Mutagen."
-else
-  echo "Kein SSH-Befehl (typisch SFTP-only, z. B. Strato) → rclone."
-  method="rclone"
-  install_rclone
-fi
-
-rclone_remote=""
-if [ "$method" = "rclone" ]; then
-  if rclone listremotes 2>/dev/null | grep -qx "c2-strato:"; then
-    rclone_remote="c2-strato"
-  elif rclone listremotes 2>/dev/null | grep -qx "c2-sync:"; then
-    rclone_remote="c2-sync"
-  else
-    sftp_host="$(ask_text "SFTP-Host (ohne Benutzer):" "$host" || true)"
-    [ -n "${sftp_host:-}" ] || die "Abgebrochen."
-    sftp_user="$(ask_text "SFTP-Benutzer:" "" || true)"
-    [ -n "${sftp_user:-}" ] || die "Abgebrochen."
-    sftp_pass="$(ask_text "SFTP-Passwort (wird in rclone verschlüsselt gespeichert):" "" || true)"
-    [ -n "${sftp_pass:-}" ] || die "Abgebrochen."
-    rclone_remote="c2-sync"
-    rclone config create "$rclone_remote" sftp \
-      host "$(trim "$sftp_host")" \
-      user "$(trim "$sftp_user")" \
-      pass "$(trim "$sftp_pass")" \
-      shell_type none \
-      known_hosts_file none >/dev/null
-  fi
-fi
-
-cat >"$SYNC_HOME/config" <<EOF
-method=$method
-deploy=$deploy
-host=$host
-remote=$remote
-rclone_remote=$rclone_remote
-EOF
-chmod 600 "$SYNC_HOME/config"
-
-cp "$HERE/transfer.sh" "$SYNC_HOME/transfer.sh"
-cp "$HERE/agent.py" "$SYNC_HOME/agent.py"
-chmod +x "$SYNC_HOME/transfer.sh" "$HERE/transfer.sh"
 
 start_agent() {
   local plist="$HOME/Library/LaunchAgents/de.likibox.c2sync.plist"
@@ -217,6 +111,11 @@ start_agent() {
   </array>
   <key>WorkingDirectory</key>
   <string>${SYNC_HOME}</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>${BIN}:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+  </dict>
   <key>RunAtLoad</key>
   <true/>
   <key>KeepAlive</key>
@@ -233,15 +132,13 @@ PLIST
   launchctl bootstrap "gui/$(id -u)" "$plist" >/dev/null 2>&1 || launchctl load "$plist" >/dev/null 2>&1 || true
 }
 
-start_agent
-
-# Protokoll c2sync:// für den Editor-Knopf „Zum Server“
-APP="$SYNC_HOME/C2Sync.app"
-rm -rf "$APP"
-mkdir -p "$APP/Contents/MacOS"
-cp "$HERE/c2sync-macos.sh" "$APP/Contents/MacOS/c2sync"
-chmod +x "$APP/Contents/MacOS/c2sync"
-cat >"$APP/Contents/Info.plist" <<'PLIST'
+install_url_handler() {
+  local APP="$SYNC_HOME/C2Sync.app"
+  rm -rf "$APP"
+  mkdir -p "$APP/Contents/MacOS"
+  cp "$HERE/c2sync-macos.sh" "$APP/Contents/MacOS/c2sync"
+  chmod +x "$APP/Contents/MacOS/c2sync"
+  cat >"$APP/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -272,48 +169,129 @@ cat >"$APP/Contents/Info.plist" <<'PLIST'
 </dict>
 </plist>
 PLIST
-/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$APP" >/dev/null 2>&1 || true
+  /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$APP" >/dev/null 2>&1 || true
 
-DESK="$HOME/Desktop/C2 Galerie übertragen.command"
-cat >"$DESK" <<EOF
+  local DESK="$HOME/Desktop/C2 Galerie übertragen.command"
+  cat >"$DESK" <<EOF
 #!/bin/bash
 "${SYNC_HOME}/transfer.sh"
 echo
 read -r -p "Taste zum Schließen… "
 EOF
-chmod +x "$DESK"
-xattr -d com.apple.quarantine "$DESK" >/dev/null 2>&1 || true
+  chmod +x "$DESK"
+  xattr -d com.apple.quarantine "$DESK" >/dev/null 2>&1 || true
+}
 
-if [ "$method" = "mutagen" ]; then
-  mutagen daemon start >/dev/null
-  mutagen daemon register >/dev/null 2>&1 || true
-  if mutagen sync list c2-gallery >/dev/null 2>&1; then
-    mutagen sync terminate c2-gallery >/dev/null 2>&1 || true
-  fi
-  mutagen sync create \
-    --name c2-gallery \
-    --sync-mode one-way-replica \
-    --default-file-mode-beta 0644 \
-    --default-directory-mode-beta 0755 \
-    --ignore ".DS_Store" \
-    "$deploy" "${host}:${remote}"
-  echo "Erste Übertragung…"
-  mutagen sync flush c2-gallery
-else
-  echo "Erste Übertragung…"
-  "$SYNC_HOME/transfer.sh"
+if ! command -v osascript >/dev/null 2>&1; then
+  die "Dieses Setup ist für macOS."
 fi
 
-osascript <<APPLESCRIPT
-display dialog "Einrichtung fertig.
+had_config=0
+method=""
+deploy=""
+host=""
+remote=""
+rclone_remote=""
+if read_config; then
+  had_config=1
+fi
 
-Übertragen:
-• Schreibtisch: „C2 Galerie übertragen“
-• Im C2-Editor: „Zum Server“
+echo "rclone bereitstellen…"
+c2_ensure_rclone || die "rclone konnte nicht eingerichtet werden (Netzwerk oder Rechte prüfen)."
 
-Methode: $method
-Ordner: $deploy
-Ziel: $host:$remote" buttons {"OK"} default button "OK"
+if [ "$had_config" -eq 0 ]; then
+  osascript <<'APPLESCRIPT' >/dev/null
+try
+  display dialog "C2 richtet die Übertragung auf den Likibox-Server ein.
+
+Der lokale Ordner kommt aus dem Editor (Deploy-Ordner / Zum Server), nicht aus diesem Setup.
+
+Danach: Schreibtisch „C2 Galerie übertragen“ und im Editor „Zum Server“." buttons {"Abbrechen", "OK"} default button "OK"
+on error number -128
+  error "cancelled"
+end try
 APPLESCRIPT
 
-echo "Fertig. Config: $SYNC_HOME/config"
+  deploy="$(c2_default_deploy)"
+  host="$(ask_text "SSH-Host (Name aus ~/.ssh/config oder user@server):" "c2-strato" || true)"
+  [ -n "${host:-}" ] || die "Abgebrochen."
+  host="$(trim "$host")"
+  remote="$(ask_text "Ordner auf dem Server (Dokumentenwurzel, z. B. likibox):" "likibox" || true)"
+  [ -n "${remote:-}" ] || die "Abgebrochen."
+  remote="$(trim "$remote" | sed 's|^/||')"
+
+  echo "Werkzeuge installieren…"
+  install_mutagen
+  method="mutagen"
+  echo "SSH-Befehl auf ${host} prüfen…"
+  if ! command -v ssh >/dev/null 2>&1; then
+    method="rclone"
+  elif ssh -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new "$host" true >/dev/null 2>&1; then
+    echo "SSH-Shell vorhanden → Mutagen."
+  else
+    echo "Kein SSH-Befehl (typisch SFTP-only, z. B. Strato) → rclone."
+    method="rclone"
+  fi
+
+  rclone_remote=""
+  if [ "$method" = "rclone" ]; then
+    c2_ensure_rclone || die "rclone konnte nicht eingerichtet werden."
+    if rclone listremotes 2>/dev/null | grep -qx "c2-strato:"; then
+      rclone_remote="c2-strato"
+    elif rclone listremotes 2>/dev/null | grep -qx "c2-sync:"; then
+      rclone_remote="c2-sync"
+    else
+      sftp_host="$(ask_text "SFTP-Host (ohne Benutzer):" "$host" || true)"
+      [ -n "${sftp_host:-}" ] || die "Abgebrochen."
+      sftp_user="$(ask_text "SFTP-Benutzer:" "" || true)"
+      [ -n "${sftp_user:-}" ] || die "Abgebrochen."
+      sftp_pass="$(ask_text "SFTP-Passwort (wird in rclone verschlüsselt gespeichert):" "" || true)"
+      [ -n "${sftp_pass:-}" ] || die "Abgebrochen."
+      rclone_remote="c2-sync"
+      rclone config create "$rclone_remote" sftp \
+        host "$(trim "$sftp_host")" \
+        user "$(trim "$sftp_user")" \
+        pass "$(trim "$sftp_pass")" \
+        shell_type none \
+        known_hosts_file none >/dev/null
+    fi
+  fi
+
+  cat >"$CONF" <<EOF
+method=$method
+deploy=$deploy
+host=$host
+remote=$remote
+rclone_remote=$rclone_remote
+EOF
+  chmod 600 "$CONF"
+fi
+
+copy_scripts
+start_agent
+install_url_handler
+
+if [ "$had_config" -eq 1 ]; then
+  osascript <<APPLESCRIPT
+display dialog "rclone ist bereit. Setup muss nicht erneut den Ordner abfragen.
+
+Lokaler Ordner: kommt aus dem Editor (Zum Server).
+Ziel: Likibox-Server.
+
+„Zum Server“ oder die Desktop-Verknüpfung lädt dorthin." buttons {"OK"} default button "OK"
+APPLESCRIPT
+else
+  osascript <<APPLESCRIPT
+display dialog "Einrichtung fertig.
+
+Übertragen auf den Likibox-Server:
+• Im Editor: „Zum Server“ (Ordner dort wählen)
+• Schreibtisch: „C2 Galerie übertragen“
+
+Methode: $method
+Ziel: $host:$remote" buttons {"OK"} default button "OK"
+APPLESCRIPT
+fi
+
+echo "Fertig. Config: $CONF"
+echo "rclone: $(c2_find_rclone || true)"

@@ -4,6 +4,7 @@ from typing import Any, Dict, Optional, Tuple
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import threading
@@ -56,10 +57,38 @@ def read_config() -> Dict[str, str]:
     return cfg
 
 
+def extra_path() -> str:
+    home = Path.home()
+    return os.pathsep.join(
+        [
+            str(BIN),
+            "/opt/homebrew/bin",
+            "/usr/local/bin",
+            str(home / "bin"),
+        ]
+    )
+
+
 def env_with_bin() -> Dict[str, str]:
     env = os.environ.copy()
-    env["PATH"] = f"{BIN}{os.pathsep}{env.get('PATH', '')}"
+    env["PATH"] = f"{extra_path()}{os.pathsep}{env.get('PATH', '')}"
     return env
+
+
+def ensure_rclone() -> Optional[str]:
+    env = env_with_bin()
+    found = shutil.which("rclone", path=env["PATH"])
+    if not found:
+        return None
+    BIN.mkdir(parents=True, exist_ok=True)
+    dest = BIN / "rclone"
+    if not dest.exists():
+        try:
+            dest.symlink_to(found)
+        except OSError:
+            shutil.copy(found, dest)
+            dest.chmod(0o755)
+    return found
 
 
 def probe(cfg: Dict[str, str]) -> Tuple[bool, Optional[str]]:
@@ -67,6 +96,8 @@ def probe(cfg: Dict[str, str]) -> Tuple[bool, Optional[str]]:
     method = cfg.get("method", "")
     try:
         if method == "rclone":
+            if not ensure_rclone():
+                return False, "rclone ist nicht verfügbar."
             remote = cfg.get("rclone_remote") or "c2-sync"
             dest = f"{remote}:"
             run = subprocess.run(
@@ -184,6 +215,7 @@ def status_payload(do_probe: bool, publish: str = "") -> Dict[str, Any]:
 def run_transfer(publish: str = "", overlay: Optional[Dict[str, str]] = None) -> Tuple[bool, Optional[str]]:
     script = HOME / "transfer.sh"
     env = env_with_bin()
+    ensure_rclone()
     if publish:
         env["C2_PUBLISH_PATH"] = publish
     for key, env_key in (
@@ -328,6 +360,7 @@ class Handler(BaseHTTPRequestHandler):
 
 def main() -> int:
     HOME.mkdir(parents=True, exist_ok=True)
+    ensure_rclone()
     server = None
     for _ in range(10):
         try:

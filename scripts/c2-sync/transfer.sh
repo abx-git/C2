@@ -6,8 +6,19 @@ SYNC_HOME="${C2_SYNC_HOME:-$HOME_DIR/.c2-sync}"
 CONF="$SYNC_HOME/config"
 BIN="$SYNC_HOME/bin"
 LAST="$SYNC_HOME/last.json"
-export PATH="$BIN:$PATH"
 LAST_RECORDED=0
+for _env in "$SYNC_HOME/env.sh" "$(dirname "$0")/env.sh"; do
+  if [ -f "$_env" ]; then
+    # shellcheck disable=SC1090
+    . "$_env"
+    break
+  fi
+done
+if type c2_sync_env >/dev/null 2>&1; then
+  c2_sync_env
+else
+  export PATH="$BIN:/opt/homebrew/bin:/usr/local/bin:$PATH"
+fi
 
 record_last() {
   LAST_RECORDED=1
@@ -56,6 +67,10 @@ if [ -n "${C2_SYNC_METHOD:-}" ]; then method=$C2_SYNC_METHOD; fi
 if [ -n "${C2_SYNC_HOST:-}" ]; then host=$C2_SYNC_HOST; fi
 if [ -n "${C2_SYNC_REMOTE:-}" ]; then remote=$C2_SYNC_REMOTE; fi
 if [ -n "${C2_RCLONE_REMOTE:-}" ]; then rclone_remote=$C2_RCLONE_REMOTE; fi
+if [ -n "${C2_SYNC_DEPLOY:-}" ]; then deploy=$C2_SYNC_DEPLOY; fi
+if [ -z "$deploy" ] && type c2_default_deploy >/dev/null 2>&1; then
+  deploy=$(c2_default_deploy)
+fi
 
 notify() {
   if command -v osascript >/dev/null 2>&1; then
@@ -113,7 +128,10 @@ find "$src" -type d -exec chmod 755 {} +
 find "$src" -type f -exec chmod 644 {} +
 
 if [ "$method" = "rclone" ]; then
-  command -v rclone >/dev/null 2>&1 || fail "rclone fehlt. Setup erneut ausführen."
+  if type c2_ensure_rclone >/dev/null 2>&1; then
+    c2_ensure_rclone || fail "rclone ist nicht verfügbar."
+  fi
+  command -v rclone >/dev/null 2>&1 || fail "rclone ist nicht verfügbar."
   dest="${rclone_remote:-c2-sync}:${dest_remote}"
   echo "rclone → $dest"
   set -- rclone sync "$src" "$dest" \
@@ -142,7 +160,7 @@ EOF
   exit 0
 fi
 
-command -v mutagen >/dev/null 2>&1 || fail "Mutagen fehlt. Setup erneut ausführen."
+command -v mutagen >/dev/null 2>&1 || fail "Mutagen ist nicht verfügbar."
 [ -n "$host" ] || fail "SSH-Host fehlt in der Konfiguration."
 if [ -n "$publish" ]; then
   session="${C2_SYNC_SESSION:-c2-$publish}"

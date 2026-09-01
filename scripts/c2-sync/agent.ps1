@@ -5,7 +5,7 @@ $SyncHome = if ($env:C2_SYNC_HOME) { $env:C2_SYNC_HOME } else { Join-Path $env:U
 $Bin = Join-Path $SyncHome "bin"
 $Conf = Join-Path $SyncHome "config"
 $Last = Join-Path $SyncHome "last.json"
-$env:PATH = "$Bin;$env:PATH"
+$env:PATH = "$Bin;C:\Program Files\rclone;$env:LOCALAPPDATA\Programs\rclone;$env:PATH"
 $script:Busy = $false
 
 function Write-Last($ok, $error) {
