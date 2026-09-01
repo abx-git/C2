@@ -229,7 +229,7 @@ export function DeployButton() {
             onClick={() => {
               setOpen(false);
               setMessage(
-                "Einmalig Setup doppelklicken: Mac scripts/c2-sync/setup.command, Windows scripts/c2-sync/setup.cmd.",
+                "Der Helfer startet nach dem Anmelden selbst. Nur wenn er fehlt: einmal setup.command (Mac) bzw. setup.cmd (Windows).",
               );
             }}
           >

@@ -220,10 +220,9 @@ start_agent() {
   <key>RunAtLoad</key>
   <true/>
   <key>KeepAlive</key>
-  <dict>
-    <key>SuccessfulExit</key>
-    <false/>
-  </dict>
+  <true/>
+  <key>ThrottleInterval</key>
+  <integer>5</integer>
   <key>StandardOutPath</key>
   <string>${SYNC_HOME}/agent.log</string>
   <key>StandardErrorPath</key>
@@ -232,7 +231,6 @@ start_agent() {
 </plist>
 PLIST
   launchctl bootstrap "gui/$(id -u)" "$plist" >/dev/null 2>&1 || launchctl load "$plist" >/dev/null 2>&1 || true
-  "$python" "$SYNC_HOME/agent.py" >>"$SYNC_HOME/agent.log" 2>&1 &
 }
 
 start_agent

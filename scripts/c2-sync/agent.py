@@ -7,6 +7,7 @@ import re
 import subprocess
 import sys
 import threading
+import time
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -232,6 +233,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.send_header("Access-Control-Allow-Private-Network", "true")
         self.send_header("Cache-Control", "no-store")
 
     def _json(self, code: int, body: dict) -> None:
@@ -307,10 +309,15 @@ class Handler(BaseHTTPRequestHandler):
 
 def main() -> int:
     HOME.mkdir(parents=True, exist_ok=True)
-    try:
-        server = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
-    except OSError:
-        return 0
+    server = None
+    for _ in range(10):
+        try:
+            server = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
+            break
+        except OSError:
+            time.sleep(0.4)
+    if server is None:
+        return 1
     try:
         server.serve_forever()
     except KeyboardInterrupt:

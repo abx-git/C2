@@ -105,7 +105,7 @@ export async function runSyncTransfer(
     }
     return {
       ok: false,
-      error: "Sync-Helfer nicht erreichbar. Einmal scripts/c2-sync/setup doppelklicken.",
+      error: "Sync-Helfer läuft nicht. Nach dem Anmelden startet er selbst, sonst einmal setup.command öffnen.",
     };
   } finally {
     window.clearTimeout(timer);
@@ -117,10 +117,19 @@ export function describeSync(
   project?: ProjectSync | null,
   publishPath = "",
 ): { label: string; tone: "ok" | "warn" | "err" } {
+  if (typeof window !== "undefined") {
+    const { protocol, hostname } = window.location;
+    if (protocol === "https:" && hostname !== "localhost" && hostname !== "127.0.0.1") {
+      return {
+        label: "Zum Server geht nur im lokalen Editor (npm run dev). GitHub Pages erreicht den Helfer auf diesem Rechner nicht.",
+        tone: "warn",
+      };
+    }
+  }
   if (!status) {
     return {
-      label: "Sync nicht eingerichtet — einmal setup.command (Mac) bzw. setup.cmd (Windows) doppelklicken.",
-      tone: "err",
+      label: "Sync-Helfer läuft gerade nicht. Setup muss nicht erneut laufen — nach dem Anmelden startet er selbst. Sonst einmal setup.command öffnen.",
+      tone: "warn",
     };
   }
   if (!status.configured) {
