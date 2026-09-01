@@ -22,6 +22,7 @@ export type MapMarker = LatLng & {
 
 type OsmMapProps = {
   markers: MapMarker[];
+  fitPoints?: LatLng[];
   activeId?: string | null;
   traveledIds?: Set<string>;
   onSelect?: (id: string) => void;
@@ -72,6 +73,7 @@ function project(point: LatLng, view: View, originX: number, originY: number) {
 
 export function OsmMap({
   markers,
+  fitPoints,
   activeId,
   traveledIds,
   onSelect,
@@ -91,6 +93,7 @@ export function OsmMap({
   const viewRef = useRef(view);
   viewRef.current = view;
   const markerKey = markers.map((item) => `${item.id}:${item.lat}:${item.lng}`).join("|");
+  const fitKey = fitPoints?.map((item) => `${item.lat}:${item.lng}`).join("|") ?? "";
   const pickMode = Boolean(onPick);
 
   useEffect(() => {
@@ -128,17 +131,25 @@ export function OsmMap({
       }
       return;
     }
+    if (fitPoints) {
+      if (!fitPoints.length) return;
+      const zoom = Math.max(fitZoom(fitPoints, size.w, size.h, 24), OSM_MIN_ZOOM);
+      const center = boundsCenter(fitPoints);
+      setView({ zoom, lat: center.lat, lng: center.lng });
+      fitted.current = true;
+      return;
+    }
     const zoom = Math.max(fitZoom(markers, size.w, size.h), pickMode ? 12 : OSM_MIN_ZOOM);
     const center = boundsCenter(markers);
     setView({ zoom, lat: center.lat, lng: center.lng });
     fitted.current = true;
-  }, [markerKey, markers, size.w, size.h, pickMode, initialView?.lat, initialView?.lng, initialView?.zoom]);
+  }, [markerKey, markers, fitKey, fitPoints, size.w, size.h, pickMode, initialView?.lat, initialView?.lng, initialView?.zoom]);
 
   const active = markers.find((item) => item.id === activeId) ?? null;
   useEffect(() => {
-    if (!active || !fitted.current) return;
+    if (!active || !fitted.current || fitPoints) return;
     setView((current) => ({ ...current, lat: active.lat, lng: active.lng }));
-  }, [active?.id, active?.lat, active?.lng]);
+  }, [active?.id, active?.lat, active?.lng, fitPoints]);
 
   const { tiles, originX, originY } = useMemo(
     () => tilesForView(view, size.w, size.h),

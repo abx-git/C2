@@ -9,6 +9,12 @@ export function roadtripGeoPhotos(photos: Photo[]): Array<Photo & { geo: PhotoGe
   return photos.filter(photoHasGeo);
 }
 
+/** Geotagged photos around the current stream index (two before, current, two after). */
+export function roadtripMapFocus(photos: Photo[], index: number, radius = 2): Array<Photo & { geo: PhotoGeo }> {
+  const from = Math.max(0, index - radius);
+  return photos.slice(from, index + radius + 1).filter(photoHasGeo) as Array<Photo & { geo: PhotoGeo }>;
+}
+
 export function formatPhotoDate(iso: string | null): string {
   if (!iso) return "";
   const date = new Date(iso);

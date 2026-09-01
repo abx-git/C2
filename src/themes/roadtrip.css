@@ -1,13 +1,12 @@
 .theme-roadtrip {
   position: relative;
-  --rt-map: min(22vmin, 12.5rem);
+  --rt-map: min(33vmin, 18.75rem);
+  --rt-stage-h: 60dvh;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto minmax(0, 1fr) auto;
-  height: 100%;
-  min-height: 100%;
+  height: 100dvh;
   min-height: 100dvh;
-  max-height: 100%;
   max-height: 100dvh;
   overflow: hidden;
   background: var(--g-bg);
@@ -19,6 +18,9 @@
 .theme-gallery-v1.theme-roadtrip.has-map {
   grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto minmax(0, 1fr) auto;
+  height: 100dvh;
+  min-height: 100dvh;
+  max-height: 100dvh;
 }
 
 .theme-roadtrip .rt-head {
@@ -103,10 +105,11 @@
 
 .theme-roadtrip .rt-stream {
   display: flex;
-  align-items: center;
+  align-items: stretch;
   gap: 1.5rem;
   width: 100%;
   height: 100%;
+  min-height: 0;
   overflow-x: auto;
   overflow-y: hidden;
   scroll-snap-type: x mandatory;
@@ -123,14 +126,18 @@
 }
 
 .theme-roadtrip .rt-card {
+  appearance: none;
+  -webkit-appearance: none;
+  display: block;
+  position: relative;
+  overflow: hidden;
   flex: 0 0 auto;
   box-sizing: border-box;
   scroll-snap-align: center;
   scroll-snap-stop: always;
   height: 100%;
-  width: auto;
-  max-width: 92%;
-  aspect-ratio: var(--rt-w, 3) / var(--rt-h, 2);
+  width: calc(var(--rt-stage-h) * var(--rt-w, 3) / var(--rt-h, 2));
+  max-width: 92vw;
   padding: 0;
   border: 0;
   background: transparent;
@@ -143,9 +150,13 @@
 
 .theme-roadtrip .rt-card img,
 .theme-roadtrip .rt-card-slot {
+  position: absolute;
+  inset: 0;
   display: block;
   width: 100%;
   height: 100%;
+  max-width: none;
+  max-height: none;
   object-fit: contain;
   pointer-events: none;
 }
@@ -441,7 +452,7 @@
   .theme-gallery-v1.theme-roadtrip,
   .theme-roadtrip.has-map,
   .theme-gallery-v1.theme-roadtrip.has-map {
-    --rt-map: min(26vmin, 9.25rem);
+    --rt-map: min(39vmin, 13.875rem);
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: auto minmax(0, 1fr) auto;
   }
@@ -457,7 +468,7 @@
   }
 
   .theme-roadtrip .rt-card {
-    max-width: 94%;
+    max-width: 94vw;
   }
 
   .theme-roadtrip .rt-nav-btn {

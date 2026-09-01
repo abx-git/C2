@@ -7,7 +7,7 @@ import {
   type Catalog,
   type Photo,
 } from "@/lib/catalog";
-import { formatGeo, formatPhotoDate, roadtripGeoPhotos, roadtripPhotos } from "@/lib/roadtrip";
+import { formatGeo, formatPhotoDate, roadtripGeoPhotos, roadtripMapFocus, roadtripPhotos } from "@/lib/roadtrip";
 import { OsmMap } from "./osm-map";
 import { SaveGuard } from "./protect-images";
 
@@ -30,6 +30,10 @@ export function RoadtripApp({ catalog, resolveUrl, className }: RoadtripAppProps
   );
   const [index, setIndex] = useState(0);
   const [tray, setTray] = useState(false);
+  const fitPoints = useMemo(
+    () => roadtripMapFocus(photos, index).map((photo) => ({ lat: photo.geo.lat, lng: photo.geo.lng })),
+    [photos, index],
+  );
   const stageRef = useRef<HTMLDivElement>(null);
   const cardsRef = useRef<(HTMLButtonElement | null)[]>([]);
   const programmatic = useRef(false);
@@ -295,6 +299,7 @@ export function RoadtripApp({ catalog, resolveUrl, className }: RoadtripAppProps
             <OsmMap
               className="h-full"
               markers={markers}
+              fitPoints={fitPoints}
               activeId={
                 current?.geo
                   ? current.id
