@@ -237,11 +237,34 @@ export function RoadtripApp({ catalog, resolveUrl, className }: RoadtripAppProps
               })
             )}
           </div>
+          {photos.length > 1 ? (
+            <>
+              <button
+                type="button"
+                className="rt-nav-btn prev"
+                onClick={() => go(index - 1)}
+                disabled={index <= 0}
+                aria-label="Vorheriges Bild"
+              >
+                ‹
+              </button>
+              <button
+                type="button"
+                className="rt-nav-btn next"
+                onClick={() => go(index + 1)}
+                disabled={index >= photos.length - 1}
+                aria-label="Nächstes Bild"
+              >
+                ›
+              </button>
+            </>
+          ) : null}
         </div>
 
         {showMap ? (
           <aside className="rt-map" aria-label="Route">
             <OsmMap
+              className="h-full"
               markers={markers}
               activeId={
                 current?.geo
@@ -262,21 +285,6 @@ export function RoadtripApp({ catalog, resolveUrl, className }: RoadtripAppProps
             {current ? <strong>{photoLabel(current)}</strong> : null}
             {meta.length ? <span>{meta.join(" · ")}</span> : null}
           </div>
-          {photos.length > 1 ? (
-            <div className="rt-nav">
-              <button type="button" className="rt-nav-btn" onClick={() => go(index - 1)} disabled={index <= 0}>
-                ←
-              </button>
-              <button
-                type="button"
-                className="rt-nav-btn"
-                onClick={() => go(index + 1)}
-                disabled={index >= photos.length - 1}
-              >
-                →
-              </button>
-            </div>
-          ) : null}
         </footer>
 
         {tray ? (
