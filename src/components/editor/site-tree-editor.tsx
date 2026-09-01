@@ -79,8 +79,9 @@ export function SiteTreeEditor() {
         />
       </label>
       <p className="mb-5 text-xs text-[var(--edit-muted)]">
-        Beispiel „montreal“ erscheint unter /montreal/. Lokal als montreal.deploy neben dem
-        Sync-Deploy-Ordner. Beim Deploy den übergeordneten Ordner oder montreal.deploy wählen.
+        Beispiel „rotterdam“ erscheint unter /rotterdam/. „Zum Server“ legt rotterdam.deploy
+        neben der Hauptgalerie an — dafür den übergeordneten Ordner wählen (z. B. c2.site),
+        nicht den Projektordner.
       </p>
       <label className="mb-3 block text-xs text-[var(--edit-muted)]">
         Server-Host

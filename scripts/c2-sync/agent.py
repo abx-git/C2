@@ -293,7 +293,26 @@ class Handler(BaseHTTPRequestHandler):
         }
         src = resolve_local_src(cfg["deploy"], slug)
         if not src.is_dir():
-            self._json(409, {"ok": False, "error": f"Deploy-Ordner fehlt: {src}"})
+            if slug:
+                parent = Path(cfg["deploy"]).parent.name or "der Hauptgalerie"
+                self._json(
+                    409,
+                    {
+                        "ok": False,
+                        "error": (
+                            f"Noch kein öffentlicher Ordner für „{slug}“. "
+                            f"Bitte den Ordner „{parent}“ wählen, nicht den Projektordner."
+                        ),
+                    },
+                )
+            else:
+                self._json(
+                    409,
+                    {
+                        "ok": False,
+                        "error": "Der Deploy-Ordner der Hauptgalerie fehlt. Einmal setup.command ausführen.",
+                    },
+                )
             return
         if not BUSY.acquire(blocking=False):
             self._json(409, {"ok": False, "error": "Es läuft bereits eine Übertragung."})

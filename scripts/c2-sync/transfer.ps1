@@ -77,7 +77,11 @@ if ($publish) {
 }
 
 if (-not $deploy -or -not (Test-Path $deploy)) {
-  Fail "Deploy-Ordner fehlt: $deploy"
+  if ($publish) {
+    $parentName = Split-Path -Leaf (Split-Path -Parent $deploy)
+    Fail "Noch kein öffentlicher Ordner für „$publish“. Bitte den Ordner „$parentName“ wählen, nicht den Projektordner."
+  }
+  Fail "Der Deploy-Ordner der Hauptgalerie fehlt."
 }
 
 Get-ChildItem -Path $deploy -Recurse -Force | ForEach-Object {

@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { appBase } from "@/lib/app-base";
 import { normalizePublishPath } from "@/lib/catalog";
-import { describeSync, fetchSyncStatus, runSyncTransfer, type SyncStatus } from "@/lib/c2-sync";
+import { describeSync, fetchSyncStatus, missingDeployHint, runSyncTransfer, wrongDeployFolderHint, type SyncStatus } from "@/lib/c2-sync";
 import { writeDeployFolder } from "@/lib/deploy";
 import { pickDirectory, supportsDirectoryPicker } from "@/lib/workspace";
 import { useEditorStore } from "@/store/editor-store";
@@ -81,7 +81,7 @@ export function DeployButton() {
   const runDeploy = async () => {
     setOpen(false);
     setProgress(null);
-    const dest = await pickDirectory("readwrite");
+    const dest = await pickDirectory("readwrite", { id: "c2-deploy-dest", startIn: "documents" });
     if (!dest) return;
     const workspace = getWorkspaceHandle();
     if (!workspace) {
@@ -129,12 +129,42 @@ export function DeployButton() {
     setBusy(true);
     setMessage("Prüfe Server-Verbindung…");
     try {
-      const live = await fetchSyncStatus(true, publishPath);
+      let live = await fetchSyncStatus(true, publishPath);
       setSync(live);
       const view = describeSync(live, projectSync, publishPath);
-      if (!live || !live.configured || !live.deployExists || live.reachable === false) {
+      if (!live || !live.configured || live.reachable === false) {
         setMessage(view.label);
         return;
+      }
+      if (!live.deployExists) {
+        const workspace = getWorkspaceHandle();
+        if (!workspace) {
+          setMessage("Kein Projekt geöffnet.");
+          return;
+        }
+        const expected = live;
+        setMessage(missingDeployHint(expected, publishPath));
+        const dest = await pickDirectory("readwrite", { id: "c2-deploy-dest", startIn: "documents" });
+        if (!dest) {
+          setMessage("Abgebrochen.");
+          return;
+        }
+        setProgress(null);
+        await saveCatalog(true);
+        await writeDeployFolder({
+          dest,
+          catalog,
+          workspace,
+          originBase: appBase(),
+          password: useEditorStore.getState().galleryPassword,
+          onProgress: setProgress,
+        });
+        live = await fetchSyncStatus(false, publishPath);
+        setSync(live);
+        if (!live?.deployExists) {
+          setMessage(wrongDeployFolderHint(expected, publishPath));
+          return;
+        }
       }
       setMessage("Übertrage auf den Server…");
       const result = await runSyncTransfer(publishPath, projectSync);
@@ -147,8 +177,11 @@ export function DeployButton() {
             : "Galerie ist auf dem Server."
           : result.error,
       );
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "Übertragung fehlgeschlagen");
     } finally {
       setBusy(false);
+      setProgress(null);
     }
   };
 

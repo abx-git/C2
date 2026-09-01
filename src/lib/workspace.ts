@@ -38,12 +38,28 @@ export async function queryReadAccess(handle: FileSystemDirectoryHandle): Promis
   return false;
 }
 
-export async function pickDirectory(mode: "read" | "readwrite" = "readwrite"): Promise<FileSystemDirectoryHandle | null> {
+type DirectoryPickerStart =
+  | "desktop"
+  | "documents"
+  | "downloads"
+  | "music"
+  | "pictures"
+  | "videos"
+  | FileSystemHandle;
+
+export async function pickDirectory(
+  mode: "read" | "readwrite" = "readwrite",
+  opts?: { id?: string; startIn?: DirectoryPickerStart },
+): Promise<FileSystemDirectoryHandle | null> {
   if (!supportsDirectoryPicker() || typeof window.showDirectoryPicker !== "function") {
     return null;
   }
   try {
-    return await window.showDirectoryPicker({ mode });
+    return await window.showDirectoryPicker({
+      mode,
+      id: opts?.id,
+      startIn: opts?.startIn,
+    });
   } catch (err) {
     if (err instanceof DOMException && err.name === "AbortError") return null;
     throw err;

@@ -112,6 +112,40 @@ export async function runSyncTransfer(
   }
 }
 
+function pathLeaf(path: string | null | undefined): string {
+  if (!path) return "";
+  const parts = path.replace(/\\/g, "/").split("/").filter(Boolean);
+  return parts.at(-1) ?? "";
+}
+
+function pathParentLeaf(path: string | null | undefined): string {
+  if (!path) return "";
+  const parts = path.replace(/\\/g, "/").split("/").filter(Boolean);
+  return parts.length >= 2 ? (parts.at(-2) ?? "") : "";
+}
+
+/** Hinweis ohne Rohpfad, wenn der öffentliche Ordner für ein Unterprojekt noch fehlt. */
+export function missingDeployHint(status: SyncStatus | null, publishPath = ""): string {
+  const slug = normalizePublishPath(publishPath);
+  const parent = pathParentLeaf(status?.deploy);
+  const folder = pathLeaf(status?.deploy) || (slug ? `${slug}.deploy` : "");
+  if (slug) {
+    const where = parent ? `den Ordner „${parent}“` : "den Ordner der Hauptgalerie";
+    return `Noch kein öffentlicher Ordner für „${slug}“. „Zum Server“ legt ${folder} an — bitte ${where} wählen, nicht den Projektordner.`;
+  }
+  return "Der Deploy-Ordner der Hauptgalerie fehlt. Einmal setup.command und den Galerie-Ordner angeben.";
+}
+
+export function wrongDeployFolderHint(status: SyncStatus | null, publishPath = ""): string {
+  const slug = normalizePublishPath(publishPath);
+  const parent = pathParentLeaf(status?.deploy);
+  if (slug) {
+    const where = parent ? `„${parent}“` : "den Ordner der Hauptgalerie";
+    return `Das war nicht ${where}. Bitte denselben Ordner wählen, in dem die Hauptgalerie liegt — nicht den Projektordner.`;
+  }
+  return "Der gewählte Ordner ist nicht der Deploy-Ordner der Hauptgalerie.";
+}
+
 export function describeSync(
   status: SyncStatus | null,
   project?: ProjectSync | null,
@@ -143,7 +177,7 @@ export function describeSync(
   }
   if (!status.deployExists) {
     return {
-      label: `Sync: Deploy-Ordner fehlt (${status.deploy ?? "unbekannt"}).`,
+      label: missingDeployHint(status, publishPath),
       tone: "err",
     };
   }
@@ -154,10 +188,17 @@ export function describeSync(
     };
   }
   if (status.last && status.last.ok === false) {
-    return {
-      label: `Sync: letzte Übertragung fehlgeschlagen. ${status.last.error ?? ""}`.trim(),
-      tone: "err",
-    };
+    const lastError = (status.last.error ?? "").trim();
+    if (/Deploy-Ordner fehlt/i.test(lastError) && status.deployExists) {
+      /* veraltet: der Ordner ist inzwischen da */
+    } else if (/Deploy-Ordner fehlt/i.test(lastError)) {
+      return { label: missingDeployHint(status, publishPath), tone: "err" };
+    } else {
+      return {
+        label: `Sync: letzte Übertragung fehlgeschlagen. ${lastError}`.trim(),
+        tone: "err",
+      };
+    }
   }
   const slug = normalizePublishPath(publishPath);
   const base = (project?.remote || status.remote || "").replace(/\/+$/, "");

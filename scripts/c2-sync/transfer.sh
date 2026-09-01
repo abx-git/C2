@@ -97,8 +97,14 @@ if [ -n "$publish" ]; then
 fi
 
 if [ ! -d "$src" ]; then
-  record_last 0 "Deploy-Ordner fehlt: $src"
-  echo "Deploy-Ordner fehlt: $src" >&2
+  if [ -n "$publish" ]; then
+    parent_name=$(basename "$(dirname "$src")")
+    record_last 0 "Noch kein öffentlicher Ordner für „$publish“. Bitte den Ordner „$parent_name“ wählen, nicht den Projektordner."
+    echo "Noch kein öffentlicher Ordner für „$publish“. Bitte den Ordner „$parent_name“ wählen, nicht den Projektordner." >&2
+  else
+    record_last 0 "Der Deploy-Ordner der Hauptgalerie fehlt."
+    echo "Der Deploy-Ordner der Hauptgalerie fehlt." >&2
+  fi
   exit 1
 fi
 
