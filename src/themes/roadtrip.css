@@ -129,7 +129,7 @@
   position: relative;
 }
 
-.theme-roadtrip .rt-map-canvas {
+.rt-map-canvas {
   position: relative;
   width: 100%;
   height: 100%;
@@ -139,24 +139,28 @@
   cursor: grab;
 }
 
-.theme-roadtrip .rt-map-canvas:active {
+.rt-map-canvas:active {
   cursor: grabbing;
 }
 
-.theme-roadtrip .rt-map-tile {
+.rt-map-canvas.is-pick {
+  cursor: crosshair;
+}
+
+.rt-map-tile {
   position: absolute;
   user-select: none;
   pointer-events: none;
 }
 
-.theme-roadtrip .rt-map-svg {
+.rt-map-svg {
   position: absolute;
   inset: 0;
   overflow: visible;
   pointer-events: none;
 }
 
-.theme-roadtrip .rt-map-route {
+.rt-map-route {
   fill: none;
   stroke: rgba(28, 27, 25, 0.28);
   stroke-width: 2.5;
@@ -164,7 +168,7 @@
   stroke-linejoin: round;
 }
 
-.theme-roadtrip .rt-map-route-traveled {
+.rt-map-route-traveled {
   fill: none;
   stroke: #c45c26;
   stroke-width: 3;
@@ -172,7 +176,7 @@
   stroke-linejoin: round;
 }
 
-.theme-roadtrip .rt-map-pin {
+.rt-map-pin {
   fill: #f7f5f1;
   stroke: #1c1b19;
   stroke-width: 1.4;
@@ -180,43 +184,43 @@
   cursor: pointer;
 }
 
-.theme-roadtrip .rt-map-pin.is-traveled {
+.rt-map-pin.is-traveled {
   fill: #c45c26;
   stroke: #c45c26;
 }
 
-.theme-roadtrip .rt-map-pin.is-active {
+.rt-map-pin.is-active {
   fill: #c45c26;
   stroke: #1c1b19;
   stroke-width: 2;
 }
 
-.theme-roadtrip .rt-map-zoom {
+.rt-map-zoom {
   position: absolute;
   right: 0.55rem;
   top: 0.55rem;
   display: flex;
   flex-direction: column;
-  border: 1px solid var(--g-line);
-  background: var(--g-bg);
+  border: 1px solid var(--g-line, rgba(28, 27, 25, 0.12));
+  background: var(--g-bg, #f7f5f1);
 }
 
-.theme-roadtrip .rt-map-zoom button {
+.rt-map-zoom button {
   width: 1.7rem;
   height: 1.7rem;
   border: 0;
   background: transparent;
-  color: var(--g-ink);
+  color: var(--g-ink, #1c1b19);
   font-size: 1rem;
   line-height: 1;
   cursor: pointer;
 }
 
-.theme-roadtrip .rt-map-zoom button + button {
-  border-top: 1px solid var(--g-line);
+.rt-map-zoom button + button {
+  border-top: 1px solid var(--g-line, rgba(28, 27, 25, 0.12));
 }
 
-.theme-roadtrip .rt-map-copy {
+.rt-map-copy {
   position: absolute;
   left: 0.45rem;
   bottom: 0.35rem;
@@ -228,7 +232,7 @@
   letter-spacing: 0.01em;
 }
 
-.theme-roadtrip .rt-map-copy a {
+.rt-map-copy a {
   color: inherit;
   text-decoration: underline;
 }

@@ -10,6 +10,7 @@ import {
   latToTileY,
   lngToTileX,
   osmTileUrl,
+  pixelToLatLng,
   tileXToLng,
   tileYToLat,
   type LatLng,
@@ -24,6 +25,8 @@ type OsmMapProps = {
   activeId?: string | null;
   traveledIds?: Set<string>;
   onSelect?: (id: string) => void;
+  onPick?: (point: LatLng) => void;
+  initialView?: LatLng & { zoom?: number };
   className?: string;
 };
 
@@ -67,15 +70,28 @@ function project(point: LatLng, view: View, originX: number, originY: number) {
   };
 }
 
-export function OsmMap({ markers, activeId, traveledIds, onSelect, className }: OsmMapProps) {
+export function OsmMap({
+  markers,
+  activeId,
+  traveledIds,
+  onSelect,
+  onPick,
+  initialView,
+  className,
+}: OsmMapProps) {
   const rootRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ w: 0, h: 0 });
-  const [view, setView] = useState<View>({ zoom: 4, lat: 20, lng: 0 });
+  const [view, setView] = useState<View>({
+    zoom: initialView?.zoom ?? 4,
+    lat: initialView?.lat ?? 20,
+    lng: initialView?.lng ?? 0,
+  });
   const fitted = useRef(false);
   const drag = useRef<{ x: number; y: number; view: View } | null>(null);
   const viewRef = useRef(view);
   viewRef.current = view;
   const markerKey = markers.map((item) => `${item.id}:${item.lat}:${item.lng}`).join("|");
+  const pickMode = Boolean(onPick);
 
   useEffect(() => {
     const el = rootRef.current;
@@ -89,12 +105,34 @@ export function OsmMap({ markers, activeId, traveledIds, onSelect, className }: 
   }, []);
 
   useEffect(() => {
-    if (!markers.length || size.w < 8 || size.h < 8) return;
-    const zoom = fitZoom(markers, size.w, size.h);
+    if (size.w < 8 || size.h < 8) return;
+    if (!markers.length) {
+      if (!fitted.current && initialView) {
+        setView({
+          zoom: initialView.zoom ?? 5,
+          lat: initialView.lat,
+          lng: initialView.lng,
+        });
+      }
+      fitted.current = true;
+      return;
+    }
+    if (pickMode && fitted.current) {
+      const point = markers[0];
+      if (point) {
+        setView((current) => ({
+          lat: point.lat,
+          lng: point.lng,
+          zoom: Math.max(current.zoom, 12),
+        }));
+      }
+      return;
+    }
+    const zoom = Math.max(fitZoom(markers, size.w, size.h), pickMode ? 12 : OSM_MIN_ZOOM);
     const center = boundsCenter(markers);
     setView({ zoom, lat: center.lat, lng: center.lng });
     fitted.current = true;
-  }, [markerKey, markers, size.w, size.h]);
+  }, [markerKey, markers, size.w, size.h, pickMode, initialView?.lat, initialView?.lng, initialView?.zoom]);
 
   const active = markers.find((item) => item.id === activeId) ?? null;
   useEffect(() => {
@@ -163,7 +201,7 @@ export function OsmMap({ markers, activeId, traveledIds, onSelect, className }: 
   return (
     <div
       ref={rootRef}
-      className={["rt-map-canvas", className].filter(Boolean).join(" ")}
+      className={["rt-map-canvas", onPick ? "is-pick" : "", className].filter(Boolean).join(" ")}
       onPointerDown={(event) => {
         if (event.button !== 0) return;
         (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
@@ -182,8 +220,22 @@ export function OsmMap({ markers, activeId, traveledIds, onSelect, className }: 
           lat: tileYToLat(tileY, start.view.zoom),
         });
       }}
-      onPointerUp={() => {
+      onPointerUp={(event) => {
+        const start = drag.current;
         drag.current = null;
+        if (!onPick || !start) return;
+        if (Math.hypot(event.clientX - start.x, event.clientY - start.y) > 6) return;
+        const rect = event.currentTarget.getBoundingClientRect();
+        const current = viewRef.current;
+        onPick(
+          pixelToLatLng(
+            { lat: current.lat, lng: current.lng, zoom: current.zoom },
+            event.clientX - rect.left,
+            event.clientY - rect.top,
+            size.w,
+            size.h,
+          ),
+        );
       }}
       onPointerCancel={() => {
         drag.current = null;

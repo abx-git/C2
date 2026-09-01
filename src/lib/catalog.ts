@@ -72,6 +72,20 @@ export function parsePhotoGeo(raw: unknown): PhotoGeo | undefined {
   return { lat: Math.round(lat * 1e6) / 1e6, lng: Math.round(lng * 1e6) / 1e6 };
 }
 
+/** Dezimalgrad, auch „53.55, 9.99“. */
+export function parseGeoText(raw: string): PhotoGeo | undefined {
+  const text = raw.trim().replace(/°/g, " ").replace(/\s+/g, " ");
+  const pair = /^(-?\d+(?:\.\d+)?)(?:\s*[NS])?[,\s;/]+(-?\d+(?:\.\d+)?)(?:\s*[EW])?$/i.exec(text);
+  if (!pair) return undefined;
+  return parsePhotoGeo({ lat: Number(pair[1]), lng: Number(pair[2]) });
+}
+
+export function geoEquals(a?: PhotoGeo | null, b?: PhotoGeo | null): boolean {
+  if (!a && !b) return true;
+  if (!a || !b) return false;
+  return a.lat === b.lat && a.lng === b.lng;
+}
+
 export function photoHasGeo(photo: Pick<Photo, "geo">): photo is Photo & { geo: PhotoGeo } {
   return Boolean(photo.geo);
 }
@@ -103,7 +117,8 @@ export type Photo = {
   width: number;
   height: number;
   exif?: PhotoExif;
-  geo?: PhotoGeo;
+  /** null = bewusst ohne Ort (kein EXIF-Nachlesen). */
+  geo?: PhotoGeo | null;
 };
 
 export type PhotosFile = {
@@ -411,7 +426,8 @@ export function parsePhotos(raw: unknown): PhotosFile {
           focalLength: typeof item.exif.focalLength === "string" ? item.exif.focalLength : undefined,
         }
       : undefined;
-    const geo = parsePhotoGeo(item.geo);
+    const geo =
+      "geo" in item ? (item.geo == null ? null : (parsePhotoGeo(item.geo) ?? null)) : undefined;
     photos.push({
       id,
       originalName: typeof item.originalName === "string" ? item.originalName : id,
@@ -424,7 +440,7 @@ export function parsePhotos(raw: unknown): PhotosFile {
       width: typeof item.width === "number" ? item.width : 1,
       height: typeof item.height === "number" ? item.height : 1,
       exif,
-      ...(geo ? { geo } : {}),
+      ...(geo !== undefined ? { geo } : {}),
     });
   }
   return { version: 1, photos };

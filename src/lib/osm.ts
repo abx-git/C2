@@ -36,6 +36,21 @@ export function tileYToLat(y: number, zoom: number): number {
   return (180 / Math.PI) * Math.atan(Math.sinh(n));
 }
 
+export function pixelToLatLng(
+  view: LatLng & { zoom: number },
+  px: number,
+  py: number,
+  width: number,
+  height: number,
+): LatLng {
+  const originX = lngToTileX(view.lng, view.zoom) * OSM_TILE_SIZE - width / 2;
+  const originY = latToTileY(view.lat, view.zoom) * OSM_TILE_SIZE - height / 2;
+  return {
+    lat: clampLat(tileYToLat((originY + py) / OSM_TILE_SIZE, view.zoom)),
+    lng: wrapLng(tileXToLng((originX + px) / OSM_TILE_SIZE, view.zoom)),
+  };
+}
+
 export function osmTileUrl(z: number, x: number, y: number): string {
   const n = 2 ** z;
   const wrappedX = ((x % n) + n) % n;

@@ -75,3 +75,44 @@ body {
 .edit-btn-primary:hover:not(:disabled) {
   background: #333230;
 }
+
+.edit-geo-map {
+  height: 11.5rem;
+  border-radius: 8px;
+  border: 1px solid var(--edit-line);
+  overflow: hidden;
+}
+
+.edit-geo-hits {
+  position: absolute;
+  z-index: 5;
+  left: 0;
+  right: 0;
+  top: calc(100% + 2px);
+  margin: 0;
+  max-height: 10rem;
+  overflow: auto;
+  padding: 0.2rem;
+  list-style: none;
+  border-radius: 8px;
+  border: 1px solid var(--edit-line);
+  background: var(--edit-control);
+  box-shadow: 0 8px 24px rgba(28, 27, 25, 0.12);
+}
+
+.edit-geo-hits button {
+  display: block;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  padding: 0.4rem 0.5rem;
+  text-align: left;
+  font-size: 0.75rem;
+  line-height: 1.35;
+  color: var(--edit-ink);
+  cursor: pointer;
+}
+
+.edit-geo-hits button:hover {
+  background: #efece6;
+}

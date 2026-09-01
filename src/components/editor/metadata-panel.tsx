@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { isPublishTag, PHOTO_RATING_MAX, type Tag } from "@/lib/catalog";
-import { formatGeo } from "@/lib/roadtrip";
+import { geoEquals, isPublishTag, PHOTO_RATING_MAX, type Tag } from "@/lib/catalog";
+import { GeoTagFields } from "@/components/editor/geo-tag-fields";
 import { useEditorStore } from "@/store/editor-store";
 
 export function confirmRemoveSelection(photoCount: number, textCount: number): boolean {
@@ -42,6 +42,7 @@ export function MetadataPanel() {
   const addTag = useEditorStore((s) => s.addTag);
   const setPhotosTag = useEditorStore((s) => s.setPhotosTag);
   const setPhotosRating = useEditorStore((s) => s.setPhotosRating);
+  const setPhotosGeo = useEditorStore((s) => s.setPhotosGeo);
   const deletePhoto = useEditorStore((s) => s.deletePhoto);
   const deleteText = useEditorStore((s) => s.deleteText);
   const deleteItems = useEditorStore((s) => s.deleteItems);
@@ -131,6 +132,7 @@ export function MetadataPanel() {
             />
           </label>
           <StarRating value={photo.rating ?? 0} onChange={(rating) => updatePhoto(photo.id, { rating })} />
+          <GeoTagFields value={photo.geo} onChange={(geo) => updatePhoto(photo.id, { geo })} />
         </>
       ) : text ? (
         <>
@@ -154,13 +156,24 @@ export function MetadataPanel() {
       ) : (
         <>
           {selectedPhotos.length && !selectedTexts.length ? (
-            <StarRating
-              value={selectedPhotos.every((item) => (item.rating ?? 0) === (selectedPhotos[0]?.rating ?? 0))
-                ? (selectedPhotos[0]?.rating ?? 0)
-                : 0}
-              mixed={!selectedPhotos.every((item) => (item.rating ?? 0) === (selectedPhotos[0]?.rating ?? 0))}
-              onChange={(rating) => setPhotosRating(selectedPhotos.map((item) => item.id), rating)}
-            />
+            <>
+              <StarRating
+                value={selectedPhotos.every((item) => (item.rating ?? 0) === (selectedPhotos[0]?.rating ?? 0))
+                  ? (selectedPhotos[0]?.rating ?? 0)
+                  : 0}
+                mixed={!selectedPhotos.every((item) => (item.rating ?? 0) === (selectedPhotos[0]?.rating ?? 0))}
+                onChange={(rating) => setPhotosRating(selectedPhotos.map((item) => item.id), rating)}
+              />
+              <GeoTagFields
+                value={
+                  selectedPhotos.every((item) => geoEquals(item.geo, selectedPhotos[0]?.geo))
+                    ? selectedPhotos[0]?.geo
+                    : undefined
+                }
+                mixed={!selectedPhotos.every((item) => geoEquals(item.geo, selectedPhotos[0]?.geo))}
+                onChange={(geo) => setPhotosGeo(selectedPhotos.map((item) => item.id), geo)}
+              />
+            </>
           ) : null}
           <p className="text-xs text-[var(--edit-muted)]">Tags gelten für alle ausgewählten Bilder und Textkacheln.</p>
         </>
@@ -229,7 +242,6 @@ export function MetadataPanel() {
             Datei: {photo.originalName}
             {photo.exif?.camera ? ` · ${photo.exif.camera}` : ""}
             {photo.exif?.focalLength ? ` · ${photo.exif.focalLength}` : ""}
-            {photo.geo ? ` · ${formatGeo(photo.geo)}` : ""}
             {` · ${photo.width}×${photo.height}`}
           </p>
           <button

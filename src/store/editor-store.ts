@@ -93,8 +93,14 @@ type EditorState = {
   ensureDisplayUrl: (id: string) => Promise<string | null>;
   ensureDisplayUrls: (ids: string[]) => Promise<void>;
   setTab: (tab: EditorTab) => void;
-  updatePhoto: (id: string, patch: Partial<Pick<Photo, "title" | "caption" | "takenAt" | "tags" | "rating">>) => void;
+  updatePhoto: (
+    id: string,
+    patch: Partial<Pick<Photo, "title" | "caption" | "takenAt" | "tags" | "rating">> & {
+      geo?: PhotoGeo | null;
+    },
+  ) => void;
   setPhotosRating: (ids: string[], rating: number) => void;
+  setPhotosGeo: (ids: string[], geo: PhotoGeo | null) => void;
   updateText: (id: string, patch: Partial<Pick<TextTile, "title" | "body" | "tags">>) => void;
   addTextTile: () => string | null;
   setPhotosTag: (ids: string[], tagId: string, on: boolean) => void;
@@ -331,7 +337,7 @@ async function backfillPhotoGeo(
   set: EditorSet,
   get: EditorGet,
 ): Promise<void> {
-  const missing = photos.filter((photo) => !photo.geo && photo.files.original);
+  const missing = photos.filter((photo) => photo.geo === undefined && photo.files.original);
   if (!missing.length) return;
   let originalsDir: FileSystemDirectoryHandle | null = null;
   try {
@@ -351,7 +357,7 @@ async function backfillPhotoGeo(
   const state = get();
   const nextPhotos = state.catalog.photos.photos.map((photo) => {
     const geo = found.get(photo.id);
-    return geo && !photo.geo ? { ...photo, geo } : photo;
+    return geo && photo.geo === undefined ? { ...photo, geo } : photo;
   });
   set({
     catalog: { ...state.catalog, photos: { version: 1, photos: nextPhotos } },
@@ -702,8 +708,16 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
   updatePhoto: (id, patch) => {
     const catalog = get().catalog;
-    const nextPatch = patch.rating === undefined ? patch : { ...patch, rating: clampPhotoRating(patch.rating) };
-    const photos = catalog.photos.photos.map((photo) => (photo.id === id ? { ...photo, ...nextPatch } : photo));
+    const photos = catalog.photos.photos.map((photo) => {
+      if (photo.id !== id) return photo;
+      const next = {
+        ...photo,
+        ...patch,
+        ...(patch.rating === undefined ? {} : { rating: clampPhotoRating(patch.rating) }),
+      };
+      if ("geo" in patch) next.geo = patch.geo ?? null;
+      return next;
+    });
     set({ catalog: { ...catalog, photos: { version: 1, photos } }, dirty: true });
   },
 
@@ -713,6 +727,14 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const wanted = new Set(ids);
     const catalog = get().catalog;
     const photos = catalog.photos.photos.map((photo) => (wanted.has(photo.id) ? { ...photo, rating: value } : photo));
+    set({ catalog: { ...catalog, photos: { version: 1, photos } }, dirty: true });
+  },
+
+  setPhotosGeo: (ids, geo) => {
+    if (!ids.length) return;
+    const wanted = new Set(ids);
+    const catalog = get().catalog;
+    const photos = catalog.photos.photos.map((photo) => (wanted.has(photo.id) ? { ...photo, geo } : photo));
     set({ catalog: { ...catalog, photos: { version: 1, photos } }, dirty: true });
   },
 
