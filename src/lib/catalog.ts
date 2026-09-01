@@ -353,10 +353,21 @@ export type SiteFile = {
   title: string;
   theme: SiteTheme;
   contactEmail?: string;
+  /** Öffentlicher URL-Unterordner, z. B. `montreal` → /montreal/. Leer = Website-Wurzel. */
+  publishPath: string;
   layout: LayoutConfig;
   protection: SiteProtection;
   pages: SitePage[];
 };
+
+/** Ein Pfadsegment für Server-Unterordner. Leer, wenn ungültig. */
+export function normalizePublishPath(raw: unknown): string {
+  const value = typeof raw === "string" ? raw.trim().replace(/^\/+|\/+$/g, "") : "";
+  if (!value) return "";
+  if (value.includes("/") || value.includes("\\") || value.includes("..")) return "";
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(value)) return "";
+  return value;
+}
 
 export const GALLERY_SECRET_PATH = "data/gallery-secret.json";
 
@@ -390,6 +401,7 @@ export function emptySite(): SiteFile {
     title: "Photos",
     theme: "gallery-v1",
     contactEmail: "",
+    publishPath: "",
     layout: { ...DEFAULT_LAYOUT },
     protection: { ...DEFAULT_PROTECTION },
     pages: [
@@ -609,6 +621,7 @@ export function parseSite(raw: unknown): SiteFile {
     title: typeof raw.title === "string" && raw.title.trim() ? raw.title : "Photos",
     theme: raw.theme === "gallery-v1" ? "gallery-v1" : "gallery-v1",
     contactEmail: typeof raw.contactEmail === "string" ? raw.contactEmail : "",
+    publishPath: normalizePublishPath(raw.publishPath),
     layout: parseLayout(raw.layout),
     protection: parseProtection(raw.protection),
     pages: pages.length ? pages : emptySite().pages,

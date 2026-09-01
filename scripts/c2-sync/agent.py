@@ -3,6 +3,7 @@
 from typing import Any, Dict, Optional, Tuple
 import json
 import os
+import re
 import subprocess
 import sys
 import threading
@@ -18,6 +19,7 @@ CONF = HOME / "config"
 LAST = HOME / "last.json"
 BUSY = threading.Lock()
 STATE = {"busy": False}
+PUBLISH_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 
 
 def now() -> str:
@@ -116,19 +118,58 @@ def probe(cfg: Dict[str, str]) -> Tuple[bool, Optional[str]]:
         return False, "Zeitüberschreitung bei der Server-Verbindung."
 
 
-def status_payload(do_probe: bool) -> Dict[str, Any]:
+def sanitize_publish(raw: str) -> str:
+    value = (raw or "").strip().strip("/")
+    if not value:
+        return ""
+    if "/" in value or "\\" in value or ".." in value or not PUBLISH_RE.match(value):
+        raise ValueError("Ungültiger Unterordner. Nur ein Segment, z. B. montreal.")
+    return value
+
+
+def resolve_local_src(deploy: str, publish: str) -> Path:
+    deploy_path = Path(deploy)
+    if not publish:
+        return deploy_path
+    if deploy_path.name in (publish, f"{publish}.deploy"):
+        return deploy_path
+    parent = deploy_path.parent
+    nested = parent / f"{publish}.deploy"
+    if nested.is_dir():
+        return nested
+    alt = parent / publish
+    if alt.is_dir():
+        return alt
+    return nested
+
+
+def join_remote(remote: str, publish: str) -> str:
+    base = (remote or "").rstrip("/")
+    if not publish:
+        return base
+    return f"{base}/{publish}" if base else publish
+
+
+def status_payload(do_probe: bool, publish: str = "") -> Dict[str, Any]:
     cfg = read_config()
     configured = bool(cfg.get("deploy") and cfg.get("method"))
-    deploy = cfg.get("deploy", "")
+    deploy_cfg = cfg.get("deploy", "")
+    slug = ""
+    try:
+        slug = sanitize_publish(publish) if publish else ""
+    except ValueError:
+        slug = ""
+    src = str(resolve_local_src(deploy_cfg, slug)) if deploy_cfg else ""
+    remote = join_remote(cfg.get("remote", ""), slug)
     payload: Dict[str, Any] = {
         "agent": True,
         "busy": STATE["busy"],
         "configured": configured,
         "method": cfg.get("method") or None,
-        "deploy": deploy or None,
-        "deployExists": bool(deploy) and Path(deploy).is_dir(),
+        "deploy": src or None,
+        "deployExists": bool(src) and Path(src).is_dir(),
         "host": cfg.get("host") or None,
-        "remote": cfg.get("remote") or None,
+        "remote": remote or None,
         "last": read_last(),
     }
     if do_probe and configured:
@@ -138,8 +179,11 @@ def status_payload(do_probe: bool) -> Dict[str, Any]:
     return payload
 
 
-def run_transfer() -> Tuple[bool, Optional[str]]:
+def run_transfer(publish: str = "") -> Tuple[bool, Optional[str]]:
     script = HOME / "transfer.sh"
+    env = env_with_bin()
+    if publish:
+        env["C2_PUBLISH_PATH"] = publish
     if os.name == "nt":
         ps1 = HOME / "transfer.ps1"
         if not ps1.is_file():
@@ -157,7 +201,7 @@ def run_transfer() -> Tuple[bool, Optional[str]]:
             return False, "transfer.sh fehlt. Setup erneut ausführen."
         cmd = ["/bin/sh", str(script)]
     try:
-        run = subprocess.run(cmd, capture_output=True, text=True, timeout=1800, env=env_with_bin())
+        run = subprocess.run(cmd, capture_output=True, text=True, timeout=1800, env=env)
     except subprocess.TimeoutExpired:
         write_last(False, "Zeitüberschreitung bei der Übertragung.")
         return False, "Zeitüberschreitung bei der Übertragung."
@@ -200,7 +244,21 @@ class Handler(BaseHTTPRequestHandler):
             self._json(404, {"ok": False, "error": "Unbekannter Pfad."})
             return
         probe_flag = parse_qs(parsed.query).get("probe", ["0"])[0] in ("1", "true")
-        self._json(200, status_payload(probe_flag))
+        subdir = parse_qs(parsed.query).get("subdir", [""])[0]
+        self._json(200, status_payload(probe_flag, subdir))
+
+    def _read_publish(self) -> str:
+        length = int(self.headers.get("Content-Length") or 0)
+        raw = self.rfile.read(length) if length > 0 else b""
+        if not raw:
+            return ""
+        try:
+            body = json.loads(raw.decode("utf-8"))
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            return ""
+        if not isinstance(body, dict):
+            return ""
+        return str(body.get("subdir") or body.get("publishPath") or "")
 
     def do_POST(self) -> None:  # noqa: N802
         parsed = urlparse(self.path)
@@ -211,18 +269,21 @@ class Handler(BaseHTTPRequestHandler):
         if not cfg.get("deploy"):
             self._json(409, {"ok": False, "error": "C2-Sync ist noch nicht eingerichtet. Bitte Setup doppelklicken."})
             return
-        if not Path(cfg["deploy"]).is_dir():
-            self._json(
-                409,
-                {"ok": False, "error": f"Deploy-Ordner fehlt: {cfg['deploy']}"},
-            )
+        try:
+            slug = sanitize_publish(self._read_publish())
+        except ValueError as exc:
+            self._json(400, {"ok": False, "error": str(exc)})
+            return
+        src = resolve_local_src(cfg["deploy"], slug)
+        if not src.is_dir():
+            self._json(409, {"ok": False, "error": f"Deploy-Ordner fehlt: {src}"})
             return
         if not BUSY.acquire(blocking=False):
             self._json(409, {"ok": False, "error": "Es läuft bereits eine Übertragung."})
             return
         STATE["busy"] = True
         try:
-            ok, error = run_transfer()
+            ok, error = run_transfer(slug)
             self._json(200 if ok else 500, {"ok": ok, "error": error})
         finally:
             STATE["busy"] = False

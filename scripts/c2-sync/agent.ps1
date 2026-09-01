@@ -33,6 +33,35 @@ function Read-Config {
   return $cfg
 }
 
+function Sanitize-Publish([string]$raw) {
+  $s = ("$raw").Trim().Trim("/")
+  if (-not $s) { return "" }
+  if ($s -match '[/\\]' -or $s.Contains("..") -or $s -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]*$') {
+    throw "Ungültiger Unterordner. Nur ein Segment, z. B. montreal."
+  }
+  return $s
+}
+
+function Resolve-LocalSrc([string]$deploy, [string]$publish) {
+  if (-not $deploy) { return $deploy }
+  if (-not $publish) { return $deploy }
+  $name = Split-Path -Leaf $deploy
+  if ($name -eq $publish -or $name -eq "$publish.deploy") { return $deploy }
+  $parent = Split-Path -Parent $deploy
+  $nested = Join-Path $parent "$publish.deploy"
+  $alt = Join-Path $parent $publish
+  if (Test-Path $nested) { return $nested }
+  if (Test-Path $alt) { return $alt }
+  return $nested
+}
+
+function Join-Remote([string]$remote, [string]$publish) {
+  $base = if ($remote) { $remote.TrimEnd("/") } else { "" }
+  if (-not $publish) { return $base }
+  if ($base) { return "$base/$publish" }
+  return $publish
+}
+
 function Probe($cfg) {
   try {
     if ($cfg["method"] -eq "rclone") {
@@ -56,18 +85,21 @@ function Probe($cfg) {
   }
 }
 
-function Status-Payload($doProbe) {
+function Status-Payload($doProbe, $publish) {
   $cfg = Read-Config
-  $deploy = $cfg["deploy"]
+  $deployCfg = $cfg["deploy"]
+  $slug = ""
+  try { $slug = Sanitize-Publish $publish } catch { $slug = "" }
+  $src = Resolve-LocalSrc $deployCfg $slug
   $payload = @{
     agent = $true
     busy = [bool]$script:Busy
-    configured = [bool]($deploy -and $cfg["method"])
+    configured = [bool]($deployCfg -and $cfg["method"])
     method = $cfg["method"]
-    deploy = $deploy
-    deployExists = [bool]($deploy -and (Test-Path $deploy))
+    deploy = $src
+    deployExists = [bool]($src -and (Test-Path $src))
     host = $cfg["host"]
-    remote = $cfg["remote"]
+    remote = Join-Remote $cfg["remote"] $slug
     last = Read-Last
   }
   if ($doProbe -and $payload.configured) {
@@ -111,8 +143,12 @@ while ($listener.IsListening) {
   }
   $path = $req.Url.AbsolutePath
   if ($req.HttpMethod -eq "GET" -and ($path -eq "/" -or $path -eq "/status")) {
-        $doProbe = $req.Url.Query -match "probe=1"
-    Send-Json $ctx 200 (Status-Payload $doProbe)
+    $doProbe = $req.Url.Query -match "probe=1"
+    $subdir = ""
+    if ($req.Url.Query -match "subdir=([^&]+)") {
+      $subdir = [System.Uri]::UnescapeDataString($Matches[1])
+    }
+    Send-Json $ctx 200 (Status-Payload $doProbe $subdir)
     continue
   }
   if ($req.HttpMethod -eq "POST" -and $path -eq "/transfer") {
@@ -125,14 +161,35 @@ while ($listener.IsListening) {
       Send-Json $ctx 409 @{ ok = $false; error = "C2-Sync ist noch nicht eingerichtet. Bitte Setup doppelklicken." }
       continue
     }
-    if (-not (Test-Path $cfg["deploy"])) {
-      Send-Json $ctx 409 @{ ok = $false; error = "Deploy-Ordner fehlt: $($cfg['deploy'])" }
+    $rawBody = ""
+    if ($req.ContentLength -gt 0) {
+      $reader = New-Object System.IO.StreamReader($req.InputStream, [System.Text.Encoding]::UTF8)
+      $rawBody = $reader.ReadToEnd()
+    }
+    $slug = ""
+    try {
+      if ($rawBody) {
+        $json = $rawBody | ConvertFrom-Json
+        $candidate = ""
+        if ($json.subdir) { $candidate = [string]$json.subdir }
+        elseif ($json.publishPath) { $candidate = [string]$json.publishPath }
+        $slug = Sanitize-Publish $candidate
+      }
+    } catch {
+      Send-Json $ctx 400 @{ ok = $false; error = $_.Exception.Message }
+      continue
+    }
+    $src = Resolve-LocalSrc $cfg["deploy"] $slug
+    if (-not (Test-Path $src)) {
+      Send-Json $ctx 409 @{ ok = $false; error = "Deploy-Ordner fehlt: $src" }
       continue
     }
     $script:Busy = $true
     try {
       $ps1 = Join-Path $SyncHome "transfer.ps1"
+      $env:C2_PUBLISH_PATH = $slug
       $p = Start-Process -FilePath "powershell" -ArgumentList @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $ps1) -Wait -PassThru -NoNewWindow
+      Remove-Item Env:C2_PUBLISH_PATH -ErrorAction SilentlyContinue
       if ($p.ExitCode -eq 0) {
         Write-Last $true $null
         Send-Json $ctx 200 @{ ok = $true; error = $null }

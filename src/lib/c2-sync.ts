@@ -1,3 +1,5 @@
+import { normalizePublishPath } from "@/lib/catalog";
+
 const SYNC_URL = "http://127.0.0.1:17843";
 
 export type SyncLast = {
@@ -54,11 +56,16 @@ function asStatus(raw: Record<string, unknown>): SyncStatus {
   };
 }
 
-export async function fetchSyncStatus(probe = false): Promise<SyncStatus | null> {
+export async function fetchSyncStatus(probe = false, publishPath = ""): Promise<SyncStatus | null> {
   const ctrl = new AbortController();
   const timer = window.setTimeout(() => ctrl.abort(), probe ? 20000 : 2500);
   try {
-    const res = await fetch(`${SYNC_URL}/status${probe ? "?probe=1" : ""}`, { signal: ctrl.signal });
+    const params = new URLSearchParams();
+    if (probe) params.set("probe", "1");
+    const slug = normalizePublishPath(publishPath);
+    if (slug) params.set("subdir", slug);
+    const query = params.toString();
+    const res = await fetch(`${SYNC_URL}/status${query ? `?${query}` : ""}`, { signal: ctrl.signal });
     if (!res.ok) return null;
     return asStatus(await readJson(res));
   } catch {
@@ -68,11 +75,17 @@ export async function fetchSyncStatus(probe = false): Promise<SyncStatus | null>
   }
 }
 
-export async function runSyncTransfer(): Promise<{ ok: boolean; error: string }> {
+export async function runSyncTransfer(publishPath = ""): Promise<{ ok: boolean; error: string }> {
   const ctrl = new AbortController();
   const timer = window.setTimeout(() => ctrl.abort(), 30 * 60 * 1000);
   try {
-    const res = await fetch(`${SYNC_URL}/transfer`, { method: "POST", signal: ctrl.signal });
+    const slug = normalizePublishPath(publishPath);
+    const res = await fetch(`${SYNC_URL}/transfer`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ subdir: slug }),
+      signal: ctrl.signal,
+    });
     const body = await readJson(res);
     if (body.ok === true) return { ok: true, error: "" };
     const error =

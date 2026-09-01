@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { appBase } from "@/lib/app-base";
+import { normalizePublishPath } from "@/lib/catalog";
 import { describeSync, fetchSyncStatus, runSyncTransfer, type SyncStatus } from "@/lib/c2-sync";
 import { writeDeployFolder } from "@/lib/deploy";
 import { pickDirectory, supportsDirectoryPicker } from "@/lib/workspace";
@@ -16,6 +17,7 @@ export function DeployButton() {
   const disconnect = useEditorStore((s) => s.disconnect);
   const workspaceLabel = useEditorStore((s) => s.workspaceLabel);
   const dirty = useEditorStore((s) => s.dirty);
+  const publishPath = catalog.site.publishPath ?? "";
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState<{ current: number; total: number; skipped: number } | null>(null);
@@ -25,7 +27,7 @@ export function DeployButton() {
   useEffect(() => {
     let cancelled = false;
     const refresh = async (probe = false) => {
-      const next = await fetchSyncStatus(probe);
+      const next = await fetchSyncStatus(probe, publishPath);
       if (!cancelled) setSync(next);
     };
     void refresh(false);
@@ -34,7 +36,7 @@ export function DeployButton() {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, []);
+  }, [publishPath]);
 
   useEffect(() => {
     if (!open) return;
@@ -101,6 +103,8 @@ export function DeployButton() {
         result.watermarked ? "Wasserzeichen" : null,
         result.encrypted ? "verschlüsselt" : null,
         result.skipped ? `${result.skipped} unverändert` : null,
+        result.publishPath ? `unter /${result.publishPath}/` : null,
+        result.folderName ? `Ordner ${result.folderName}` : null,
         syncReady ? "Danach „Zum Server“." : null,
       ]
         .filter(Boolean)
@@ -119,7 +123,7 @@ export function DeployButton() {
     setBusy(true);
     setMessage("Prüfe Server-Verbindung…");
     try {
-      const live = await fetchSyncStatus(true);
+      const live = await fetchSyncStatus(true, publishPath);
       setSync(live);
       const view = describeSync(live);
       if (!live || !live.configured || !live.deployExists || live.reachable === false) {
@@ -127,9 +131,16 @@ export function DeployButton() {
         return;
       }
       setMessage("Übertrage auf den Server…");
-      const result = await runSyncTransfer();
-      setSync(await fetchSyncStatus(false));
-      setMessage(result.ok ? "Galerie ist auf dem Server." : result.error);
+      const result = await runSyncTransfer(publishPath);
+      setSync(await fetchSyncStatus(false, publishPath));
+      const slug = normalizePublishPath(publishPath);
+      setMessage(
+        result.ok
+          ? slug
+            ? `Galerie ist auf dem Server unter /${slug}/.`
+            : "Galerie ist auf dem Server."
+          : result.error,
+      );
     } finally {
       setBusy(false);
     }

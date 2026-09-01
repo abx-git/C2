@@ -1,4 +1,5 @@
 import {
+  normalizePublishPath,
   toPublicCatalog,
   toPublicPhotos,
   watermarkLabel,
@@ -33,7 +34,20 @@ export type DeployResult = {
   watermarked: boolean;
   mode: "gallery" | "roadtrip";
   geoCount: number;
+  folderName: string;
+  publishPath: string;
 };
+
+async function resolveDeployDest(
+  picked: FileSystemDirectoryHandle,
+  publishPath: string,
+): Promise<FileSystemDirectoryHandle> {
+  const slug = normalizePublishPath(publishPath);
+  if (!slug) return picked;
+  const name = picked.name.replace(/\/$/, "");
+  if (name === slug || name === `${slug}.deploy`) return picked;
+  return picked.getDirectoryHandle(`${slug}.deploy`, { create: true });
+}
 
 export type DeployProgress = {
   current: number;
@@ -153,15 +167,17 @@ export async function writeDeployFolder(opts: {
   password?: string;
   onProgress?: (progress: DeployProgress) => void;
 }): Promise<DeployResult> {
+  const dest = await resolveDeployDest(opts.dest, opts.catalog.site.publishPath);
+  const publishPath = normalizePublishPath(opts.catalog.site.publishPath);
   let copiedApp = false;
   let appSource: DeployResult["appSource"] = "none";
 
   if (opts.appFolder) {
-    await copyDirectoryHandle(opts.appFolder, opts.dest, new Set(["data", "images", "edit", "c2-app"]));
+    await copyDirectoryHandle(opts.appFolder, dest, new Set(["data", "images", "edit", "c2-app"]));
     copiedApp = true;
     appSource = "folder";
   } else {
-    copiedApp = await copyAppFromOrigin(opts.dest, opts.originBase ?? ".");
+    copiedApp = await copyAppFromOrigin(dest, opts.originBase ?? ".");
     if (copiedApp) appSource = "origin";
   }
 
@@ -192,21 +208,21 @@ export async function writeDeployFolder(opts: {
   const photos = publicCatalog.photos.photos;
 
   await Promise.all([
-    writeJsonFile(opts.dest, "data/photos.json", publicPhotos),
-    writeJsonFile(opts.dest, "data/tags.json", published.tags),
-    writeJsonFile(opts.dest, "data/site.json", publicSite),
-    writeJsonFile(opts.dest, "data/texts.json", published.texts),
+    writeJsonFile(dest, "data/photos.json", publicPhotos),
+    writeJsonFile(dest, "data/tags.json", published.tags),
+    writeJsonFile(dest, "data/site.json", publicSite),
+    writeJsonFile(dest, "data/texts.json", published.texts),
   ]);
   const bootstrap = catalogBootstrapScript(published);
-  await writeTextFile(opts.dest, "data/catalog.js", `${bootstrap}\n`);
-  const indexHtml = await readTextFile(opts.dest, "index.html");
+  await writeTextFile(dest, "data/catalog.js", `${bootstrap}\n`);
+  const indexHtml = await readTextFile(dest, "index.html");
   if (indexHtml) {
-    await writeTextFile(opts.dest, "index.html", injectCatalogIntoHtml(indexHtml, bootstrap));
+    await writeTextFile(dest, "index.html", injectCatalogIntoHtml(indexHtml, bootstrap));
   }
-  await rewriteCopiedAppForFileOpen(opts.dest);
+  await rewriteCopiedAppForFileOpen(dest);
 
-  const displayDir = await ensureDirPath(opts.dest, "images/display");
-  const thumbDir = await ensureDirPath(opts.dest, "images/thumbs");
+  const displayDir = await ensureDirPath(dest, "images/display");
+  const thumbDir = await ensureDirPath(dest, "images/thumbs");
   const keepDisplay = new Set(publicPhotos.photos.map((photo) => fileName(photo.files.display)));
   const keepThumb = new Set(publicPhotos.photos.map((photo) => fileName(photo.files.thumb)));
   await Promise.all([removeMissingNames(displayDir, keepDisplay), removeMissingNames(thumbDir, keepThumb)]);
@@ -266,5 +282,7 @@ export async function writeDeployFolder(opts: {
     watermarked: Boolean(mark),
     mode: publicSite.layout?.view === "roadtrip" ? "roadtrip" : "gallery",
     geoCount: photos.filter((photo) => photo.geo).length,
+    folderName: dest.name,
+    publishPath,
   };
 }

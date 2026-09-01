@@ -33,7 +33,44 @@ Get-Content $Conf | ForEach-Object {
   $cfg[$k.Trim()] = $v
 }
 
-$deploy = $cfg["deploy"]
+$deployCfg = $cfg["deploy"]
+if (-not $deployCfg) {
+  Fail "Deploy-Ordner fehlt: $deployCfg"
+}
+
+function Sanitize-Publish([string]$raw) {
+  $s = ("$raw").Trim().Trim("/")
+  if (-not $s) { return "" }
+  if ($s -match '[/\\]' -or $s.Contains("..") -or $s -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]*$') {
+    throw "Ungültiger Unterordner. Nur ein Segment, z. B. montreal."
+  }
+  return $s
+}
+
+function Resolve-LocalSrc([string]$deploy, [string]$publish) {
+  if (-not $publish) { return $deploy }
+  $name = Split-Path -Leaf $deploy
+  if ($name -eq $publish -or $name -eq "$publish.deploy") { return $deploy }
+  $parent = Split-Path -Parent $deploy
+  $nested = Join-Path $parent "$publish.deploy"
+  $alt = Join-Path $parent $publish
+  if (Test-Path $nested) { return $nested }
+  if (Test-Path $alt) { return $alt }
+  return $nested
+}
+
+try {
+  $publish = Sanitize-Publish ($env:C2_PUBLISH_PATH)
+} catch {
+  Fail $_.Exception.Message
+}
+
+$deploy = Resolve-LocalSrc $deployCfg $publish
+$remote = $cfg["remote"]
+if ($publish) {
+  $remote = "$($remote.TrimEnd('/'))/$publish"
+}
+
 if (-not $deploy -or -not (Test-Path $deploy)) {
   Fail "Deploy-Ordner fehlt: $deploy"
 }
@@ -48,7 +85,7 @@ $method = $cfg["method"]
 if ($method -eq "rclone") {
   if (-not (Get-Command rclone -ErrorAction SilentlyContinue)) { Fail "rclone fehlt. Setup erneut ausführen." }
   $remoteName = if ($cfg["rclone_remote"]) { $cfg["rclone_remote"] } else { "c2-sync" }
-  $dest = "${remoteName}:$($cfg['remote'])"
+  $dest = "${remoteName}:$remote"
   Write-Host "rclone → $dest"
   & rclone sync $deploy $dest --sftp-shell-type none --sftp-known-hosts-file none --create-empty-src-dirs --exclude ".DS_Store" --progress
   if ($LASTEXITCODE -ne 0) { Fail "rclone sync fehlgeschlagen." }
@@ -59,8 +96,7 @@ if ($method -eq "rclone") {
 
 if (-not (Get-Command mutagen -ErrorAction SilentlyContinue)) { Fail "Mutagen fehlt. Setup erneut ausführen." }
 $hostName = $cfg["host"]
-$remote = $cfg["remote"]
-$session = "c2-gallery"
+$session = if ($publish) { "c2-$publish" } else { "c2-gallery" }
 & mutagen daemon start | Out-Null
 $listed = & mutagen sync list $session 2>$null
 if ($LASTEXITCODE -ne 0) {

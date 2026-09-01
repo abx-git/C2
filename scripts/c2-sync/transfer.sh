@@ -52,16 +52,6 @@ while IFS='=' read -r key value || [ -n "$key" ]; do
   esac
 done <"$CONF"
 
-if [ ! -d "$deploy" ]; then
-  record_last 0 "Deploy-Ordner fehlt: $deploy"
-  echo "Deploy-Ordner fehlt: $deploy" >&2
-  exit 1
-fi
-
-# Öffentliche Dateien müssen für den Webserver lesbar sein.
-find "$deploy" -type d -exec chmod 755 {} +
-find "$deploy" -type f -exec chmod 644 {} +
-
 notify() {
   if command -v osascript >/dev/null 2>&1; then
     osascript -e "display notification \"$1\" with title \"C2\"" >/dev/null 2>&1 || true
@@ -75,11 +65,47 @@ fail() {
   exit 1
 }
 
+publish=$(printf '%s' "${C2_PUBLISH_PATH:-}" | sed 's|^/*||;s|/*$||')
+case "$publish" in
+  */* | *..* | *\\*) fail "Ungültiger Unterordner. Nur ein Segment, z. B. montreal." ;;
+esac
+if [ -n "$publish" ]; then
+  printf '%s' "$publish" | grep -Eq '^[A-Za-z0-9][A-Za-z0-9._-]*$' \
+    || fail "Ungültiger Unterordner. Nur ein Segment, z. B. montreal."
+fi
+
+src="$deploy"
+dest_remote="$remote"
+if [ -n "$publish" ]; then
+  parent=$(dirname "$deploy")
+  base=$(basename "$deploy")
+  if [ "$base" = "$publish" ] || [ "$base" = "${publish}.deploy" ]; then
+    src="$deploy"
+  elif [ -d "$parent/${publish}.deploy" ]; then
+    src="$parent/${publish}.deploy"
+  elif [ -d "$parent/${publish}" ]; then
+    src="$parent/${publish}"
+  else
+    src="$parent/${publish}.deploy"
+  fi
+  dest_remote="${remote%/}/$publish"
+fi
+
+if [ ! -d "$src" ]; then
+  record_last 0 "Deploy-Ordner fehlt: $src"
+  echo "Deploy-Ordner fehlt: $src" >&2
+  exit 1
+fi
+
+# Öffentliche Dateien müssen für den Webserver lesbar sein.
+find "$src" -type d -exec chmod 755 {} +
+find "$src" -type f -exec chmod 644 {} +
+
 if [ "$method" = "rclone" ]; then
   command -v rclone >/dev/null 2>&1 || fail "rclone fehlt. Setup erneut ausführen."
-  dest="${rclone_remote:-c2-sync}:${remote}"
+  dest="${rclone_remote:-c2-sync}:${dest_remote}"
   echo "rclone → $dest"
-  rclone sync "$deploy" "$dest" \
+  rclone sync "$src" "$dest" \
     --sftp-shell-type none \
     --sftp-known-hosts-file none \
     --create-empty-src-dirs \
@@ -93,7 +119,11 @@ fi
 
 command -v mutagen >/dev/null 2>&1 || fail "Mutagen fehlt. Setup erneut ausführen."
 [ -n "$host" ] || fail "SSH-Host fehlt in der Konfiguration."
-session="${C2_SYNC_SESSION:-c2-gallery}"
+if [ -n "$publish" ]; then
+  session="${C2_SYNC_SESSION:-c2-$publish}"
+else
+  session="${C2_SYNC_SESSION:-c2-gallery}"
+fi
 mutagen daemon start >/dev/null
 if ! mutagen sync list "$session" >/dev/null 2>&1; then
   echo "Mutagen-Sitzung anlegen…"
@@ -103,9 +133,9 @@ if ! mutagen sync list "$session" >/dev/null 2>&1; then
     --default-file-mode-beta 0644 \
     --default-directory-mode-beta 0755 \
     --ignore ".DS_Store" \
-    "$deploy" "${host}:${remote}"
+    "$src" "${host}:${dest_remote}"
 fi
-echo "mutagen flush → ${host}:${remote}"
+echo "mutagen flush → ${host}:${dest_remote}"
 mutagen sync flush "$session" || fail "mutagen flush fehlgeschlagen. SSH-Zugang prüfen."
 record_last 1 ""
 notify "Galerie ist auf dem Server."

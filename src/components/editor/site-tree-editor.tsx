@@ -54,7 +54,7 @@ export function SiteTreeEditor() {
           onChange={(event) => updateSite({ ...site, title: event.target.value })}
         />
       </label>
-      <label className="mb-5 block text-xs text-[var(--edit-muted)]">
+      <label className="mb-3 block text-xs text-[var(--edit-muted)]">
         Contact-E-Mail
         <input
           className="edit-field mt-1"
@@ -63,6 +63,23 @@ export function SiteTreeEditor() {
           onChange={(event) => updateSite({ ...site, contactEmail: event.target.value })}
         />
       </label>
+      <label className="mb-1 block text-xs text-[var(--edit-muted)]">
+        Unterordner auf dem Server
+        <input
+          className="edit-field mt-1"
+          value={site.publishPath ?? ""}
+          placeholder="leer = Website-Wurzel"
+          spellCheck={false}
+          onChange={(event) => {
+            const next = event.target.value.trim().replace(/^\/+|\/+$/g, "").replace(/[^A-Za-z0-9._-]/g, "");
+            updateSite({ ...site, publishPath: next });
+          }}
+        />
+      </label>
+      <p className="mb-5 text-xs text-[var(--edit-muted)]">
+        Beispiel „montreal“ erscheint unter /montreal/. Lokal als montreal.deploy neben dem
+        Sync-Deploy-Ordner. Beim Deploy den übergeordneten Ordner oder montreal.deploy wählen.
+      </p>
       <LayoutFields
         layout={site.layout ?? DEFAULT_LAYOUT}
         onChange={(layout) => updateSite({ ...site, layout })}
