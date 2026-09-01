@@ -26,6 +26,7 @@ export function EditorShell() {
   const connectWorkspace = useEditorStore((s) => s.connectWorkspace);
   const reauthorizeWorkspace = useEditorStore((s) => s.reauthorizeWorkspace);
   const saveCatalog = useEditorStore((s) => s.saveCatalog);
+  const saveProjectAs = useEditorStore((s) => s.saveProjectAs);
   const status = useEditorStore((s) => s.status);
   const restoring = useEditorStore((s) => s.restoring);
   const needsGesture = useEditorStore((s) => s.needsGesture);
@@ -42,6 +43,12 @@ export function EditorShell() {
   const previewPhotoId = useEditorStore((s) => s.previewPhotoId);
   const thumbUrls = useEditorStore((s) => s.thumbUrls);
   const displayUrls = useEditorStore((s) => s.displayUrls);
+  const canUndo = useEditorStore((s) => s.canUndo);
+  const canRedo = useEditorStore((s) => s.canRedo);
+  const undo = useEditorStore((s) => s.undo);
+  const redo = useEditorStore((s) => s.redo);
+  const undoShortcut = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.userAgent) ? "⌘Z" : "Strg+Z";
+  const redoShortcut = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.userAgent) ? "⇧⌘Z" : "Strg+Y";
 
   useEffect(() => {
     void restoreWorkspace();
@@ -54,6 +61,31 @@ export function EditorShell() {
     }, 400);
     return () => window.clearTimeout(timer);
   }, [dirty, catalog, galleryPassword, saveCatalog]);
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey) || event.altKey) return;
+      const key = event.key.toLowerCase();
+      if (key === "o") {
+        event.preventDefault();
+        void connectWorkspace();
+        return;
+      }
+      if (status !== "ready") return;
+      if (key === "s") {
+        event.preventDefault();
+        if (event.shiftKey) void saveProjectAs();
+        else void saveCatalog(true).then(() => useEditorStore.setState({ message: "Projekt gespeichert." }));
+        return;
+      }
+      if (key !== "z" && key !== "y") return;
+      event.preventDefault();
+      if (key === "y" || (key === "z" && event.shiftKey)) redo();
+      else undo();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [connectWorkspace, redo, saveCatalog, saveProjectAs, status, undo]);
 
   useEffect(() => {
     if (activeTab !== "preview" || status !== "ready") return;
@@ -81,7 +113,7 @@ export function EditorShell() {
               onClick={() => {
                 if (status !== "ready") {
                   useEditorStore.setState({
-                    message: "Zuerst einen Workspace-Ordner öffnen.",
+                    message: "Zuerst ein Projekt öffnen.",
                   });
                   return;
                 }
@@ -92,7 +124,25 @@ export function EditorShell() {
             </button>
           ))}
         </nav>
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-2">
+          <button
+            type="button"
+            className="edit-btn"
+            disabled={status !== "ready" || !canUndo}
+            title={`Rückgängig (${undoShortcut})`}
+            onClick={() => undo()}
+          >
+            Rückgängig
+          </button>
+          <button
+            type="button"
+            className="edit-btn"
+            disabled={status !== "ready" || !canRedo}
+            title={`Wiederholen (${redoShortcut})`}
+            onClick={() => redo()}
+          >
+            Wiederholen
+          </button>
           <DeployButton />
         </div>
       </header>
@@ -107,12 +157,12 @@ export function EditorShell() {
 
         {restoring && status !== "ready" && !needsGesture ? (
           <p className="mb-3 text-sm text-[var(--edit-muted)]">
-            {workspaceLabel ? `Workspace „${workspaceLabel}“ wird gelesen…` : "Workspace wird gelesen…"}
+            {workspaceLabel ? `Projekt „${workspaceLabel}“ wird gelesen…` : "Projekt wird gelesen…"}
           </p>
         ) : null}
         {needsGesture ? (
           <ConnectCard
-            title="Workspace erneut verbinden"
+            title="Projekt erneut verbinden"
             body={`Zugriff auf „${workspaceLabel ?? "Ordner"}“ bestätigen. Falls ein Dialog geöffnet ist, liegt er möglicherweise hinter diesem Fenster.`}
             action="Zugriff erlauben"
             onAction={() => void reauthorizeWorkspace()}
@@ -123,9 +173,9 @@ export function EditorShell() {
           </p>
         ) : status !== "ready" ? (
           <ConnectCard
-            title="Workspace-Ordner wählen"
-            body="Alle Originale, heruntergerechneten Bilder und JSON-Dateien bleiben in diesem Ordner. Nichts wird auf einen Server übertragen, bis Sie einen Deploy-Ordner erzeugen."
-            action="Ordner öffnen"
+            title="Projekt öffnen"
+            body="Katalog, Originale und Server-Verbindung liegen in diesem Ordner. Nichts geht auf den Server, bis Sie einen Deploy-Ordner erzeugen."
+            action="Projekt öffnen"
             onAction={() => void connectWorkspace()}
           />
         ) : activeTab === "photos" ? (

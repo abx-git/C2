@@ -170,6 +170,7 @@ def status_payload(do_probe: bool, publish: str = "") -> Dict[str, Any]:
         "deployExists": bool(src) and Path(src).is_dir(),
         "host": cfg.get("host") or None,
         "remote": remote or None,
+        "rcloneRemote": cfg.get("rclone_remote") or None,
         "last": read_last(),
     }
     if do_probe and configured:
@@ -179,11 +180,20 @@ def status_payload(do_probe: bool, publish: str = "") -> Dict[str, Any]:
     return payload
 
 
-def run_transfer(publish: str = "") -> Tuple[bool, Optional[str]]:
+def run_transfer(publish: str = "", overlay: Optional[Dict[str, str]] = None) -> Tuple[bool, Optional[str]]:
     script = HOME / "transfer.sh"
     env = env_with_bin()
     if publish:
         env["C2_PUBLISH_PATH"] = publish
+    for key, env_key in (
+        ("host", "C2_SYNC_HOST"),
+        ("remote", "C2_SYNC_REMOTE"),
+        ("method", "C2_SYNC_METHOD"),
+        ("rclone_remote", "C2_RCLONE_REMOTE"),
+    ):
+        value = (overlay or {}).get(key, "").strip()
+        if value:
+            env[env_key] = value
     if os.name == "nt":
         ps1 = HOME / "transfer.ps1"
         if not ps1.is_file():
@@ -247,18 +257,16 @@ class Handler(BaseHTTPRequestHandler):
         subdir = parse_qs(parsed.query).get("subdir", [""])[0]
         self._json(200, status_payload(probe_flag, subdir))
 
-    def _read_publish(self) -> str:
+    def _read_json(self) -> dict:
         length = int(self.headers.get("Content-Length") or 0)
         raw = self.rfile.read(length) if length > 0 else b""
         if not raw:
-            return ""
+            return {}
         try:
             body = json.loads(raw.decode("utf-8"))
         except (json.JSONDecodeError, UnicodeDecodeError):
-            return ""
-        if not isinstance(body, dict):
-            return ""
-        return str(body.get("subdir") or body.get("publishPath") or "")
+            return {}
+        return body if isinstance(body, dict) else {}
 
     def do_POST(self) -> None:  # noqa: N802
         parsed = urlparse(self.path)
@@ -269,11 +277,18 @@ class Handler(BaseHTTPRequestHandler):
         if not cfg.get("deploy"):
             self._json(409, {"ok": False, "error": "C2-Sync ist noch nicht eingerichtet. Bitte Setup doppelklicken."})
             return
+        body = self._read_json()
         try:
-            slug = sanitize_publish(self._read_publish())
+            slug = sanitize_publish(str(body.get("subdir") or body.get("publishPath") or ""))
         except ValueError as exc:
             self._json(400, {"ok": False, "error": str(exc)})
             return
+        overlay = {
+            "host": str(body.get("host") or ""),
+            "remote": str(body.get("remote") or ""),
+            "method": str(body.get("method") or ""),
+            "rclone_remote": str(body.get("rcloneRemote") or body.get("rclone_remote") or ""),
+        }
         src = resolve_local_src(cfg["deploy"], slug)
         if not src.is_dir():
             self._json(409, {"ok": False, "error": f"Deploy-Ordner fehlt: {src}"})
@@ -283,7 +298,7 @@ class Handler(BaseHTTPRequestHandler):
             return
         STATE["busy"] = True
         try:
-            ok, error = run_transfer(slug)
+            ok, error = run_transfer(slug, overlay)
             self._json(200 if ok else 500, {"ok": ok, "error": error})
         finally:
             STATE["busy"] = False

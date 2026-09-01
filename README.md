@@ -30,7 +30,7 @@ Falls macOS das Setup blockiert: Rechtsklick auf `setup.command` → **Öffnen**
 1. Im Editor **Deploy-Ordner** in denselben lokalen Ordner schreiben.
 2. **Zum Server** klicken oder die Desktop-Verknüpfung.
 
-Die lokale Konfiguration liegt in `~/.c2-sync/` (Windows: `%USERPROFILE%\.c2-sync\`) und kommt nicht ins Git.
+Die lokale Sync-Software liegt in `~/.c2-sync/` (Windows: `%USERPROFILE%\.c2-sync\`) und kommt nicht ins Git. Host und Server-Ordner jedes Projekts stehen in `data/sync.json` im Projektordner — nicht im öffentlichen Deploy.
 
 `one-way-replica` bzw. `rclone sync` macht den Server-Ordner zum Abbild des Deploy-Ordners. In Strato die Domain-Dokumentenwurzel auf denselben Unterordner setzen (Standard: `likibox`).
 
@@ -39,6 +39,6 @@ Unter **Struktur** kann ein **Unterordner auf dem Server** stehen (z. B. `montre
 1. Deploy schreibt nach `{slug}.deploy` neben dem Sync-Deploy-Ordner, wenn der gewählte Ordner nicht schon so heißt.
 2. **Zum Server** überträgt nach `{remote}/{slug}` (z. B. `likibox/montreal`), ohne den Hauptordner zu überschreiben.
 
-Die Desktop-Verknüpfung bleibt beim Haupt-Deploy. Für Unterordner **Zum Server** im jeweiligen Workspace nutzen.
+Im Projektmenü: **Projekt öffnen**, **Speichern**, **Speichern unter**, **Trennen**. Die Desktop-Verknüpfung bleibt beim Haupt-Deploy. Für Unterordner **Zum Server** im jeweiligen Projekt nutzen.
 
 Setup nur aus diesem C2-Ordner starten, nicht aus einer älteren Kopie. Ein Root-Sync löscht andere Server-Unterordner (z. B. `montreal`) nicht mehr.

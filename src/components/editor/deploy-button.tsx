@@ -11,8 +11,10 @@ import { useEditorStore } from "@/store/editor-store";
 export function DeployButton() {
   const status = useEditorStore((s) => s.status);
   const catalog = useEditorStore((s) => s.catalog);
+  const projectSync = useEditorStore((s) => s.projectSync);
   const getWorkspaceHandle = useEditorStore((s) => s.getWorkspaceHandle);
   const saveCatalog = useEditorStore((s) => s.saveCatalog);
+  const saveProjectAs = useEditorStore((s) => s.saveProjectAs);
   const connectWorkspace = useEditorStore((s) => s.connectWorkspace);
   const disconnect = useEditorStore((s) => s.disconnect);
   const workspaceLabel = useEditorStore((s) => s.workspaceLabel);
@@ -61,16 +63,20 @@ export function DeployButton() {
   if (status !== "ready") {
     return (
       <button type="button" className="edit-btn" onClick={() => void connectWorkspace()}>
-        Workspace öffnen
+        Projekt öffnen
       </button>
     );
   }
 
   const busyLabel =
     progress && progress.total ? `Schreibe ${progress.current}/${progress.total}…` : "Schreibe…";
-  const syncView = sync === undefined ? null : describeSync(sync);
+  const syncView = sync === undefined ? null : describeSync(sync, projectSync, publishPath);
   const syncReady = Boolean(sync?.configured && sync.deployExists && sync.reachable !== false);
   const syncBad = syncView?.tone === "err";
+  const mac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.userAgent);
+  const saveShortcut = mac ? "⌘S" : "Strg+S";
+  const saveAsShortcut = mac ? "⇧⌘S" : "Strg+Umschalt+S";
+  const openShortcut = mac ? "⌘O" : "Strg+O";
 
   const runDeploy = async () => {
     setOpen(false);
@@ -79,12 +85,12 @@ export function DeployButton() {
     if (!dest) return;
     const workspace = getWorkspaceHandle();
     if (!workspace) {
-      setMessage("Kein Workspace verbunden.");
+      setMessage("Kein Projekt geöffnet.");
       return;
     }
     setBusy(true);
     try {
-      await saveCatalog();
+      await saveCatalog(true);
       const result = await writeDeployFolder({
         dest,
         catalog,
@@ -125,13 +131,13 @@ export function DeployButton() {
     try {
       const live = await fetchSyncStatus(true, publishPath);
       setSync(live);
-      const view = describeSync(live);
+      const view = describeSync(live, projectSync, publishPath);
       if (!live || !live.configured || !live.deployExists || live.reachable === false) {
         setMessage(view.label);
         return;
       }
       setMessage("Übertrage auf den Server…");
-      const result = await runSyncTransfer(publishPath);
+      const result = await runSyncTransfer(publishPath, projectSync);
       setSync(await fetchSyncStatus(false, publishPath));
       const slug = normalizePublishPath(publishPath);
       setMessage(
@@ -156,17 +162,56 @@ export function DeployButton() {
         aria-haspopup="menu"
         onClick={() => setOpen((value) => !value)}
       >
-        <span className="max-w-[10rem] truncate">{busy ? busyLabel : workspaceLabel || "Workspace"}</span>
+        <span className="max-w-[10rem] truncate">{busy ? busyLabel : workspaceLabel || "Projekt"}</span>
         {dirty && !busy ? <span className="edit-menu-dot" title="Ungespeichert" /> : null}
         {syncBad && !busy ? <span className="edit-menu-dot is-err" title={syncView?.label} /> : null}
         <span aria-hidden="true">▾</span>
       </button>
       {open ? (
         <div className="edit-menu-panel" role="menu">
-          <button type="button" role="menuitem" onClick={() => { setOpen(false); void connectWorkspace(); }}>
-            Anderen Ordner
+          <button
+            type="button"
+            role="menuitem"
+            title={openShortcut}
+            onClick={() => {
+              setOpen(false);
+              void connectWorkspace();
+            }}
+          >
+            Projekt öffnen
           </button>
-          <button type="button" role="menuitem" onClick={() => { setOpen(false); disconnect(); }}>
+          <button
+            type="button"
+            role="menuitem"
+            disabled={busy}
+            title={saveShortcut}
+            onClick={() => {
+              setOpen(false);
+              void saveCatalog(true).then(() => setMessage("Projekt gespeichert."));
+            }}
+          >
+            Speichern
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            disabled={busy}
+            title={saveAsShortcut}
+            onClick={() => {
+              setOpen(false);
+              void saveProjectAs();
+            }}
+          >
+            Speichern unter
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              setOpen(false);
+              disconnect();
+            }}
+          >
             Trennen
           </button>
           <div className="edit-menu-sep" />

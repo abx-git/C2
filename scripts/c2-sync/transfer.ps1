@@ -33,6 +33,11 @@ Get-Content $Conf | ForEach-Object {
   $cfg[$k.Trim()] = $v
 }
 
+if ($env:C2_SYNC_METHOD) { $cfg["method"] = $env:C2_SYNC_METHOD }
+if ($env:C2_SYNC_HOST) { $cfg["host"] = $env:C2_SYNC_HOST }
+if ($env:C2_SYNC_REMOTE) { $cfg["remote"] = $env:C2_SYNC_REMOTE }
+if ($env:C2_RCLONE_REMOTE) { $cfg["rclone_remote"] = $env:C2_RCLONE_REMOTE }
+
 $deployCfg = $cfg["deploy"]
 if (-not $deployCfg) {
   Fail "Deploy-Ordner fehlt: $deployCfg"

@@ -100,6 +100,7 @@ function Status-Payload($doProbe, $publish) {
     deployExists = [bool]($src -and (Test-Path $src))
     host = $cfg["host"]
     remote = Join-Remote $cfg["remote"] $slug
+    rcloneRemote = $cfg["rclone_remote"]
     last = Read-Last
   }
   if ($doProbe -and $payload.configured) {
@@ -174,6 +175,13 @@ while ($listener.IsListening) {
         if ($json.subdir) { $candidate = [string]$json.subdir }
         elseif ($json.publishPath) { $candidate = [string]$json.publishPath }
         $slug = Sanitize-Publish $candidate
+        if ($json.host) { $env:C2_SYNC_HOST = [string]$json.host }
+        if ($json.remote) { $env:C2_SYNC_REMOTE = [string]$json.remote }
+        if ($json.method) { $env:C2_SYNC_METHOD = [string]$json.method }
+        $rcloneName = ""
+        if ($json.rcloneRemote) { $rcloneName = [string]$json.rcloneRemote }
+        elseif ($json.rclone_remote) { $rcloneName = [string]$json.rclone_remote }
+        if ($rcloneName) { $env:C2_RCLONE_REMOTE = $rcloneName }
       }
     } catch {
       Send-Json $ctx 400 @{ ok = $false; error = $_.Exception.Message }
@@ -190,6 +198,10 @@ while ($listener.IsListening) {
       $env:C2_PUBLISH_PATH = $slug
       $p = Start-Process -FilePath "powershell" -ArgumentList @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $ps1) -Wait -PassThru -NoNewWindow
       Remove-Item Env:C2_PUBLISH_PATH -ErrorAction SilentlyContinue
+      Remove-Item Env:C2_SYNC_HOST -ErrorAction SilentlyContinue
+      Remove-Item Env:C2_SYNC_REMOTE -ErrorAction SilentlyContinue
+      Remove-Item Env:C2_SYNC_METHOD -ErrorAction SilentlyContinue
+      Remove-Item Env:C2_RCLONE_REMOTE -ErrorAction SilentlyContinue
       if ($p.ExitCode -eq 0) {
         Write-Last $true $null
         Send-Json $ctx 200 @{ ok = $true; error = $null }

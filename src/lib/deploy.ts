@@ -16,6 +16,7 @@ import {
   listRelativeFiles,
   readBinaryFile,
   readTextFile,
+  removeFile,
   removeMissingNames,
   runPool,
   writeBinaryFile,
@@ -213,6 +214,11 @@ export async function writeDeployFolder(opts: {
     writeJsonFile(dest, "data/site.json", publicSite),
     writeJsonFile(dest, "data/texts.json", published.texts),
   ]);
+  try {
+    await removeFile(dest, "data/sync.json");
+  } catch {
+    /* private project file, not for the public folder */
+  }
   const bootstrap = catalogBootstrapScript(published);
   await writeTextFile(dest, "data/catalog.js", `${bootstrap}\n`);
   const indexHtml = await readTextFile(dest, "index.html");

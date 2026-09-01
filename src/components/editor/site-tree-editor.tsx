@@ -34,6 +34,8 @@ export function SiteTreeEditor() {
   const site = useEditorStore((s) => s.catalog.site);
   const catalog = useEditorStore((s) => s.catalog);
   const updateSite = useEditorStore((s) => s.updateSite);
+  const projectSync = useEditorStore((s) => s.projectSync);
+  const updateProjectSync = useEditorStore((s) => s.updateProjectSync);
   const galleryPassword = useEditorStore((s) => s.galleryPassword);
   const setGalleryPassword = useEditorStore((s) => s.setGalleryPassword);
 
@@ -79,6 +81,32 @@ export function SiteTreeEditor() {
       <p className="mb-5 text-xs text-[var(--edit-muted)]">
         Beispiel „montreal“ erscheint unter /montreal/. Lokal als montreal.deploy neben dem
         Sync-Deploy-Ordner. Beim Deploy den übergeordneten Ordner oder montreal.deploy wählen.
+      </p>
+      <label className="mb-3 block text-xs text-[var(--edit-muted)]">
+        Server-Host
+        <input
+          className="edit-field mt-1"
+          value={projectSync.host}
+          placeholder="c2-strato"
+          spellCheck={false}
+          onChange={(event) => updateProjectSync({ host: event.target.value.trim() })}
+        />
+      </label>
+      <label className="mb-1 block text-xs text-[var(--edit-muted)]">
+        Ordner auf dem Server
+        <input
+          className="edit-field mt-1"
+          value={projectSync.remote}
+          placeholder="likibox"
+          spellCheck={false}
+          onChange={(event) =>
+            updateProjectSync({ remote: event.target.value.trim().replace(/^\/+|\/+$/g, "") })
+          }
+        />
+      </label>
+      <p className="mb-5 text-xs text-[var(--edit-muted)]">
+        Wird mit dem Projekt in data/sync.json gespeichert, nicht im öffentlichen Deploy. Passwort
+        bleibt in rclone bzw. SSH.
       </p>
       <LayoutFields
         layout={site.layout ?? DEFAULT_LAYOUT}
@@ -372,7 +400,7 @@ function ProtectionFields({
         <span>
           Galerie mit Passwort schützen
           <span className="mt-0.5 block text-[var(--edit-muted)]">
-            Display- und Vorschaubilder werden verschlüsselt. Das Passwort steht nur in diesem Workspace, nicht in der
+            Display- und Vorschaubilder werden verschlüsselt. Das Passwort steht nur in diesem Projekt, nicht in der
             veröffentlichten Site.
           </span>
         </span>

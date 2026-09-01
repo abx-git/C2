@@ -39,6 +39,7 @@ import {
   ensureDirPath,
   getDirectoryAtPath,
   loadDirectoryHandle,
+  copyProjectFiles,
   pickDirectory,
   queryWriteAccess,
   readBinaryFile,
@@ -50,6 +51,14 @@ import {
   writeFileInDir,
   writeJsonFile,
 } from "@/lib/workspace";
+import { fetchSyncStatus } from "@/lib/c2-sync";
+import {
+  emptyProjectSync,
+  parseProjectSync,
+  projectSyncIsEmpty,
+  PROJECT_SYNC_PATH,
+  type ProjectSync,
+} from "@/lib/project-sync";
 
 export type EditorTab = "photos" | "tags" | "site" | "preview";
 
@@ -75,6 +84,7 @@ type EditorState = {
   error: string | null;
   dirty: boolean;
   galleryPassword: string;
+  projectSync: ProjectSync;
   thumbUrls: Record<string, string>;
   displayUrls: Record<string, string>;
   restoring: boolean;
@@ -116,9 +126,15 @@ type EditorState = {
   deleteTag: (id: string, force?: boolean) => boolean;
   updateSite: (site: SiteFile) => void;
   setGalleryPassword: (password: string) => void;
-  saveCatalog: () => Promise<void>;
+  updateProjectSync: (patch: Partial<ProjectSync>) => void;
+  saveCatalog: (force?: boolean) => Promise<void>;
+  saveProjectAs: () => Promise<void>;
   pickDeployFolder: () => Promise<FileSystemDirectoryHandle | null>;
   getWorkspaceHandle: () => FileSystemDirectoryHandle | null;
+  canUndo: boolean;
+  canRedo: boolean;
+  undo: () => void;
+  redo: () => void;
 };
 
 let workspaceHandle: FileSystemDirectoryHandle | null = null;
@@ -126,6 +142,76 @@ let workspaceLoadId = 0;
 let saveInFlight: Promise<void> | null = null;
 const blobUrls = new Set<string>();
 const displayLoads = new Map<string, Promise<string | null>>();
+const pendingFileDeletes = new Map<string, string[]>();
+
+const HISTORY_LIMIT = 80;
+const COALESCE_MS = 700;
+
+type HistorySnapshot = {
+  catalog: Catalog;
+  galleryPassword: string;
+  projectSync: ProjectSync;
+};
+
+let historyPast: HistorySnapshot[] = [];
+let historyFuture: HistorySnapshot[] = [];
+let coalesceKey: string | null = null;
+let coalesceTimer: number | null = null;
+let historyPaused = false;
+
+function cloneCatalog(catalog: Catalog): Catalog {
+  return structuredClone(catalog);
+}
+
+function historyFlags(): Pick<EditorState, "canUndo" | "canRedo"> {
+  return { canUndo: historyPast.length > 0, canRedo: historyFuture.length > 0 };
+}
+
+function clearHistory(set: EditorSet) {
+  historyPast = [];
+  historyFuture = [];
+  coalesceKey = null;
+  if (coalesceTimer != null) window.clearTimeout(coalesceTimer);
+  coalesceTimer = null;
+  pendingFileDeletes.clear();
+  set(historyFlags());
+}
+
+function bumpCoalesce(key: string) {
+  coalesceKey = key;
+  if (coalesceTimer != null) window.clearTimeout(coalesceTimer);
+  coalesceTimer = window.setTimeout(() => {
+    coalesceKey = null;
+    coalesceTimer = null;
+  }, COALESCE_MS);
+}
+
+function rememberEdit(get: EditorGet, set: EditorSet, key?: string) {
+  if (historyPaused) return;
+  if (key && key === coalesceKey) {
+    bumpCoalesce(key);
+    return;
+  }
+  const { catalog, galleryPassword, projectSync } = get();
+  historyPast.push({ catalog: cloneCatalog(catalog), galleryPassword, projectSync: { ...projectSync } });
+  if (historyPast.length > HISTORY_LIMIT) historyPast.shift();
+  historyFuture = [];
+  if (key) bumpCoalesce(key);
+  else {
+    coalesceKey = null;
+    if (coalesceTimer != null) window.clearTimeout(coalesceTimer);
+    coalesceTimer = null;
+  }
+  set(historyFlags());
+}
+
+function restoreThumbs(set: EditorSet, get: EditorGet, catalog: Catalog) {
+  const handle = workspaceHandle;
+  if (!handle) return;
+  const missing = catalog.photos.photos.filter((photo) => !get().thumbUrls[photo.id]);
+  if (!missing.length) return;
+  void fillThumbUrls(handle, missing, workspaceLoadId, set, get);
+}
 
 type EditorSet = (
   partial: Partial<EditorState> | ((state: EditorState) => Partial<EditorState>),
@@ -290,6 +376,27 @@ async function fillThumbUrls(
   }
 }
 
+async function loadProjectSync(handle: FileSystemDirectoryHandle): Promise<ProjectSync> {
+  const parsed = parseProjectSync(await readJsonFile(handle, PROJECT_SYNC_PATH));
+  if (!projectSyncIsEmpty(parsed)) return parsed;
+  const status = await fetchSyncStatus(false);
+  if (!status?.configured) return parsed;
+  const seeded: ProjectSync = {
+    version: 1,
+    method: status.method === "rclone" || status.method === "mutagen" ? status.method : "",
+    host: status.host ?? "",
+    remote: (status.remote ?? "").replace(/\/+$/, ""),
+    rcloneRemote: status.rcloneRemote ?? "",
+  };
+  if (projectSyncIsEmpty(seeded)) return parsed;
+  try {
+    await writeJsonFile(handle, PROJECT_SYNC_PATH, seeded);
+  } catch {
+    /* first save will persist */
+  }
+  return seeded;
+}
+
 async function presentWorkspace(
   handle: FileSystemDirectoryHandle,
   set: EditorSet,
@@ -306,6 +413,7 @@ async function presentWorkspace(
   await ensureWorkspaceLayout(handle);
   const catalog = await loadCatalogFromHandle(handle);
   const secret = parseGallerySecret(await readJsonFile(handle, GALLERY_SECRET_PATH));
+  const projectSync = await loadProjectSync(handle);
   if (loadId !== workspaceLoadId) return;
   workspaceHandle = handle;
   await saveDirectoryHandle(handle);
@@ -318,14 +426,17 @@ async function presentWorkspace(
     canWrite: true,
     catalog,
     galleryPassword: secret,
+    projectSync,
     restoring: false,
     needsGesture: false,
     dirty: false,
     error: null,
-    message: extra.message ?? (count ? `Vorschaubilder 0/${count}` : `Workspace „${handle.name}“ verbunden.`),
+    message: extra.message ?? (count ? `Vorschaubilder 0/${count}` : `Projekt „${handle.name}“ geöffnet.`),
     thumbUrls: {},
     displayUrls: {},
+    ...historyFlags(),
   });
+  clearHistory(set);
   void fillThumbUrls(handle, catalog.photos.photos, loadId, set, get);
   void backfillPhotoGeo(handle, catalog.photos.photos, loadId, set, get);
 }
@@ -359,10 +470,12 @@ async function backfillPhotoGeo(
     const geo = found.get(photo.id);
     return geo && photo.geo === undefined ? { ...photo, geo } : photo;
   });
+  historyPaused = true;
   set({
     catalog: { ...state.catalog, photos: { version: 1, photos: nextPhotos } },
     dirty: true,
   });
+  historyPaused = false;
 }
 
 async function addPreviewUrl(
@@ -391,10 +504,13 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   error: null,
   dirty: false,
   galleryPassword: "",
+  projectSync: emptyProjectSync(),
   thumbUrls: {},
   displayUrls: {},
   restoring: true,
   needsGesture: false,
+  canUndo: false,
+  canRedo: false,
 
   getWorkspaceHandle: () => workspaceHandle,
 
@@ -424,7 +540,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         restoring: false,
         needsGesture: false,
         status: "disconnected",
-        error: err instanceof Error ? err.message : "Workspace konnte nicht gelesen werden",
+        error: err instanceof Error ? err.message : "Projekt konnte nicht gelesen werden",
       });
     }
   },
@@ -455,7 +571,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     } catch (err) {
       set({
         status: "error",
-        error: err instanceof Error ? err.message : "Workspace konnte nicht gelesen werden",
+        error: err instanceof Error ? err.message : "Projekt konnte nicht gelesen werden",
       });
     }
   },
@@ -495,13 +611,13 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       return;
     }
     try {
-      await presentWorkspace(handle, set, get, { message: `Workspace „${handle.name}“ verbunden.` });
+      await presentWorkspace(handle, set, get, { message: `Projekt „${handle.name}“ geöffnet.` });
     } catch (err) {
       set({
         message: null,
         restoring: false,
         status: "error",
-        error: err instanceof Error ? err.message : "Workspace konnte nicht gelesen werden",
+        error: err instanceof Error ? err.message : "Projekt konnte nicht gelesen werden",
       });
     }
   },
@@ -522,20 +638,23 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       previewPhotoId: null,
       dirty: false,
       galleryPassword: "",
+      projectSync: emptyProjectSync(),
       thumbUrls: {},
       displayUrls: {},
       restoring: false,
       needsGesture: false,
       message: null,
       error: null,
+      ...historyFlags(),
     });
+    clearHistory(set);
   },
 
   importFiles: async (files, beforeId) => {
     const handle = workspaceHandle;
     const state = get();
     if (!handle || !state.canWrite) {
-      set({ error: "Bitte zuerst einen Workspace-Ordner mit Schreibzugriff öffnen." });
+      set({ error: "Bitte zuerst ein Projekt mit Schreibzugriff öffnen." });
       return;
     }
     const images = files.filter(isImageFile);
@@ -543,6 +662,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       set({ error: "Keine Bilddateien gefunden." });
       return;
     }
+    rememberEdit(get, set);
 
     const photos = [...state.catalog.photos.photos];
     const newRefs: FeedRef[] = [];
@@ -707,6 +827,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   setTab: (tab) => set({ tab }),
 
   updatePhoto: (id, patch) => {
+    rememberEdit(get, set, `photo:${id}:${Object.keys(patch).sort().join(",")}`);
     const catalog = get().catalog;
     const photos = catalog.photos.photos.map((photo) => {
       if (photo.id !== id) return photo;
@@ -723,6 +844,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
   setPhotosRating: (ids, rating) => {
     if (!ids.length) return;
+    rememberEdit(get, set, `rating:${ids.slice().sort().join(",")}`);
     const value = clampPhotoRating(rating);
     const wanted = new Set(ids);
     const catalog = get().catalog;
@@ -732,6 +854,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
   setPhotosGeo: (ids, geo) => {
     if (!ids.length) return;
+    rememberEdit(get, set, `geo:${ids.slice().sort().join(",")}`);
     const wanted = new Set(ids);
     const catalog = get().catalog;
     const photos = catalog.photos.photos.map((photo) => (wanted.has(photo.id) ? { ...photo, geo } : photo));
@@ -739,12 +862,14 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   },
 
   updateText: (id, patch) => {
+    rememberEdit(get, set, `text:${id}:${Object.keys(patch).sort().join(",")}`);
     const catalog = get().catalog;
     const texts = catalog.texts.texts.map((text) => (text.id === id ? { ...text, ...patch } : text));
     set({ catalog: { ...catalog, texts: { ...catalog.texts, texts } }, dirty: true });
   },
 
   addTextTile: () => {
+    rememberEdit(get, set);
     const catalog = get().catalog;
     const id = newId();
     const after = get().selectedPhotoId;
@@ -771,6 +896,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
   setPhotosTag: (ids, tagId, on) => {
     if (!ids.length) return;
+    rememberEdit(get, set, `tag:${ids.slice().sort().join(",")}:${tagId}:${on ? "1" : "0"}`);
     const wanted = new Set(ids);
     const catalog = get().catalog;
     const photos = catalog.photos.photos.map((photo) => {
@@ -804,6 +930,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const moving = selected.includes(fromId) && selected.length > 1 ? visibleIds.filter((id) => selected.includes(id)) : [fromId];
     const nextVisible = moveVisibleIds(visibleIds, moving, toId);
     if (!nextVisible) return;
+    rememberEdit(get, set);
     const items = normalizeItems(catalog.photos.photos, catalog.texts.texts, catalog.texts.items);
     const nextItems = applyVisibleOrder(items, visibleIds, nextVisible);
     set({
@@ -833,6 +960,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       return;
     }
     const items = normalizeItems(catalog.photos.photos, catalog.texts.texts, catalog.texts.items);
+    rememberEdit(get, set);
     set({
       catalog: {
         ...catalog,
@@ -843,6 +971,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   },
 
   setPageOrder: (pageId, order) => {
+    rememberEdit(get, set, `page-order:${pageId}`);
     const catalog = get().catalog;
     const pages = updateGalleryPage(catalog.site.pages, pageId, (page) => {
       if (order === undefined) {
@@ -869,34 +998,12 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   deleteItems: async (ids) => {
     const idSet = new Set(ids.filter(Boolean));
     if (!idSet.size) return;
-    const handle = workspaceHandle;
+    rememberEdit(get, set);
     const catalog = get().catalog;
     const photosToDelete = catalog.photos.photos.filter((photo) => idSet.has(photo.id));
-    if (handle) {
-      for (const photo of photosToDelete) {
-        for (const path of [photo.files.original, photo.files.display, photo.files.thumb]) {
-          if (!path) continue;
-          try {
-            await removeFile(handle, path);
-          } catch {
-            /* file may already be gone */
-          }
-        }
-      }
-    }
-    const thumbUrls = { ...get().thumbUrls };
-    const displayUrls = { ...get().displayUrls };
     for (const photo of photosToDelete) {
-      if (thumbUrls[photo.id]) {
-        URL.revokeObjectURL(thumbUrls[photo.id]);
-        blobUrls.delete(thumbUrls[photo.id]);
-        delete thumbUrls[photo.id];
-      }
-      if (displayUrls[photo.id]) {
-        URL.revokeObjectURL(displayUrls[photo.id]);
-        blobUrls.delete(displayUrls[photo.id]);
-        delete displayUrls[photo.id];
-      }
+      const paths = [photo.files.original, photo.files.display, photo.files.thumb].filter(Boolean) as string[];
+      if (paths.length) pendingFileDeletes.set(photo.id, paths);
     }
     const photos = catalog.photos.photos.filter((photo) => !idSet.has(photo.id));
     const texts = catalog.texts.texts.filter((text) => !idSet.has(text.id));
@@ -913,14 +1020,13 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       selectedPhotoIds: get().selectedPhotoIds.filter((itemId) => !idSet.has(itemId)),
       previewPhotoId: previewPhotoId && idSet.has(previewPhotoId) ? null : previewPhotoId,
       dirty: true,
-      thumbUrls,
-      displayUrls,
     });
   },
 
   addTag: (name) => {
     const trimmed = name.trim();
     if (!trimmed) return null;
+    rememberEdit(get, set);
     const catalog = get().catalog;
     const tag = createTag(trimmed, catalog.tags.tags);
     set({
@@ -933,6 +1039,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   renameTag: (id, name) => {
     const trimmed = name.trim();
     if (!trimmed) return;
+    rememberEdit(get, set, `tag-name:${id}`);
     const catalog = get().catalog;
     const tags = catalog.tags.tags.map((tag) => (tag.id === id ? { ...tag, name: trimmed } : tag));
     set({ catalog: { ...catalog, tags: { version: 1, tags } }, dirty: true });
@@ -942,6 +1049,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     if (isPublishTag(id)) return false;
     const catalog = get().catalog;
     if (!force && tagInUse(id, catalog.photos.photos, catalog.texts.texts)) return false;
+    rememberEdit(get, set);
     const tags = catalog.tags.tags.filter((tag) => tag.id !== id);
     const photos = catalog.photos.photos.map((photo) => ({
       ...photo,
@@ -966,6 +1074,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   },
 
   updateSite: (site) => {
+    rememberEdit(get, set, "site");
     set({
       catalog: {
         ...get().catalog,
@@ -976,13 +1085,19 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   },
 
   setGalleryPassword: (password) => {
+    rememberEdit(get, set, "password");
     set({ galleryPassword: password, dirty: true });
   },
 
-  saveCatalog: async () => {
+  updateProjectSync: (patch) => {
+    rememberEdit(get, set, "sync");
+    set({ projectSync: { ...get().projectSync, ...patch, version: 1 }, dirty: true });
+  },
+
+  saveCatalog: async (force = false) => {
     if (saveInFlight) {
       await saveInFlight;
-      if (get().dirty) await get().saveCatalog();
+      if (get().dirty || force) await get().saveCatalog(force);
       return;
     }
     let release: () => void = () => {};
@@ -990,9 +1105,11 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       release = resolve;
     });
     try {
-      while (get().dirty) {
+      let runForced = force;
+      while (get().dirty || runForced) {
+        runForced = false;
         const handle = workspaceHandle;
-        const { catalog, canWrite, galleryPassword } = get();
+        const { catalog, canWrite, galleryPassword, projectSync } = get();
         if (!handle || !canWrite) break;
         const site = { ...catalog.site, protection: editorProtection(catalog.site.protection) };
         await Promise.all([
@@ -1000,6 +1117,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
           writeJsonFile(handle, "data/tags.json", catalog.tags),
           writeJsonFile(handle, "data/site.json", site),
           writeJsonFile(handle, "data/texts.json", catalog.texts),
+          writeJsonFile(handle, PROJECT_SYNC_PATH, projectSync),
         ]);
         if (site.protection.passwordProtect && galleryPassword) {
           await writeJsonFile(handle, GALLERY_SECRET_PATH, { password: galleryPassword });
@@ -1011,17 +1129,119 @@ export const useEditorStore = create<EditorState>((set, get) => ({
           }
         }
         set((state) => {
-          const editedDuringSave = state.catalog !== catalog;
+          const editedDuringSave = state.catalog !== catalog || state.projectSync !== projectSync;
           return {
             dirty: editedDuringSave,
             catalog: editedDuringSave ? state.catalog : { ...catalog, site },
           };
         });
+        const liveIds = new Set(get().catalog.photos.photos.map((photo) => photo.id));
+        for (const [id, paths] of [...pendingFileDeletes]) {
+          if (liveIds.has(id)) {
+            pendingFileDeletes.delete(id);
+            continue;
+          }
+          for (const path of paths) {
+            try {
+              await removeFile(handle, path);
+            } catch {
+              /* file may already be gone */
+            }
+          }
+          pendingFileDeletes.delete(id);
+        }
       }
     } finally {
       saveInFlight = null;
       release();
     }
+  },
+
+  saveProjectAs: async () => {
+    const source = workspaceHandle;
+    if (!source || !get().canWrite) {
+      set({ error: "Kein Projekt geöffnet." });
+      return;
+    }
+    set({ message: "Zielordner wählen …", error: null });
+    let dest: FileSystemDirectoryHandle | null;
+    try {
+      dest = await pickDirectory("readwrite");
+    } catch (err) {
+      set({
+        message: null,
+        error: err instanceof Error ? err.message : "Ordner konnte nicht gewählt werden.",
+      });
+      return;
+    }
+    if (!dest) {
+      set({ message: null });
+      return;
+    }
+    try {
+      if (await source.isSameEntry(dest)) {
+        await get().saveCatalog(true);
+        set({ message: "Projekt gespeichert." });
+        return;
+      }
+      await get().saveCatalog(true);
+      set({ message: "Kopiere Projekt …" });
+      const total = await copyProjectFiles(source, dest, (current, count) => {
+        if (!count) return;
+        set({ message: `Kopiere Projekt ${current}/${count} …` });
+      });
+      await presentWorkspace(dest, set, get, {
+        message: `Projekt unter „${dest.name}“ gespeichert${total ? ` (${total} Dateien)` : ""}.`,
+      });
+    } catch (err) {
+      set({
+        error: err instanceof Error ? err.message : "Speichern unter ist fehlgeschlagen.",
+      });
+    }
+  },
+
+  undo: () => {
+    if (!historyPast.length) return;
+    const current = get();
+    historyFuture.push({
+      catalog: cloneCatalog(current.catalog),
+      galleryPassword: current.galleryPassword,
+      projectSync: { ...current.projectSync },
+    });
+    const snap = historyPast.pop()!;
+    coalesceKey = null;
+    if (coalesceTimer != null) window.clearTimeout(coalesceTimer);
+    coalesceTimer = null;
+    set({
+      catalog: snap.catalog,
+      galleryPassword: snap.galleryPassword,
+      projectSync: snap.projectSync,
+      dirty: true,
+      ...historyFlags(),
+    });
+    restoreThumbs(set, get, snap.catalog);
+  },
+
+  redo: () => {
+    if (!historyFuture.length) return;
+    const current = get();
+    historyPast.push({
+      catalog: cloneCatalog(current.catalog),
+      galleryPassword: current.galleryPassword,
+      projectSync: { ...current.projectSync },
+    });
+    const snap = historyFuture.pop()!;
+    coalesceKey = null;
+    if (coalesceTimer != null) window.clearTimeout(coalesceTimer);
+    coalesceTimer = null;
+    set({
+      catalog: snap.catalog,
+      galleryPassword: snap.galleryPassword,
+      projectSync: snap.projectSync,
+      dirty: true,
+      ...historyFlags(),
+    });
+    restoreThumbs(set, get, snap.catalog);
   },
 
   pickDeployFolder: async () => pickDirectory("readwrite"),

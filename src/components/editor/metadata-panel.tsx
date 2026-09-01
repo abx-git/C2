@@ -7,13 +7,13 @@ import { useEditorStore } from "@/store/editor-store";
 
 export function confirmRemoveSelection(photoCount: number, textCount: number): boolean {
   if (photoCount + textCount <= 0) return false;
-  if (photoCount === 1 && textCount === 0) return window.confirm("Bild aus dem Workspace entfernen?");
+  if (photoCount === 1 && textCount === 0) return window.confirm("Bild aus dem Projekt entfernen?");
   if (photoCount === 0 && textCount === 1) return window.confirm("Textkachel entfernen?");
   const parts = [
     photoCount ? `${photoCount} Bild${photoCount === 1 ? "" : "er"}` : null,
     textCount ? `${textCount} Textkachel${textCount === 1 ? "" : "n"}` : null,
   ].filter(Boolean);
-  return window.confirm(`${parts.join(" und ")} aus dem Workspace entfernen?`);
+  return window.confirm(`${parts.join(" und ")} aus dem Projekt entfernen?`);
 }
 
 function findTag(tags: Tag[], name: string): Tag | undefined {

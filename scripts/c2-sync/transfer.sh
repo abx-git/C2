@@ -52,6 +52,11 @@ while IFS='=' read -r key value || [ -n "$key" ]; do
   esac
 done <"$CONF"
 
+if [ -n "${C2_SYNC_METHOD:-}" ]; then method=$C2_SYNC_METHOD; fi
+if [ -n "${C2_SYNC_HOST:-}" ]; then host=$C2_SYNC_HOST; fi
+if [ -n "${C2_SYNC_REMOTE:-}" ]; then remote=$C2_SYNC_REMOTE; fi
+if [ -n "${C2_RCLONE_REMOTE:-}" ]; then rclone_remote=$C2_RCLONE_REMOTE; fi
+
 notify() {
   if command -v osascript >/dev/null 2>&1; then
     osascript -e "display notification \"$1\" with title \"C2\"" >/dev/null 2>&1 || true

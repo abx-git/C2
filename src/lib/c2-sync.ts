@@ -1,4 +1,5 @@
 import { normalizePublishPath } from "@/lib/catalog";
+import { emptyProjectSync, projectSyncForTransfer, type ProjectSync } from "@/lib/project-sync";
 
 const SYNC_URL = "http://127.0.0.1:17843";
 
@@ -17,6 +18,7 @@ export type SyncStatus = {
   deployExists?: boolean;
   host?: string | null;
   remote?: string | null;
+  rcloneRemote?: string | null;
   reachable?: boolean;
   probeError?: string | null;
   last?: SyncLast | null;
@@ -50,6 +52,7 @@ function asStatus(raw: Record<string, unknown>): SyncStatus {
     deployExists: raw.deployExists === true,
     host: typeof raw.host === "string" ? raw.host : null,
     remote: typeof raw.remote === "string" ? raw.remote : null,
+    rcloneRemote: typeof raw.rcloneRemote === "string" ? raw.rcloneRemote : null,
     reachable: typeof raw.reachable === "boolean" ? raw.reachable : undefined,
     probeError: typeof raw.probeError === "string" ? raw.probeError : null,
     last,
@@ -75,7 +78,10 @@ export async function fetchSyncStatus(probe = false, publishPath = ""): Promise<
   }
 }
 
-export async function runSyncTransfer(publishPath = ""): Promise<{ ok: boolean; error: string }> {
+export async function runSyncTransfer(
+  publishPath = "",
+  project?: ProjectSync | null,
+): Promise<{ ok: boolean; error: string }> {
   const ctrl = new AbortController();
   const timer = window.setTimeout(() => ctrl.abort(), 30 * 60 * 1000);
   try {
@@ -83,7 +89,7 @@ export async function runSyncTransfer(publishPath = ""): Promise<{ ok: boolean; 
     const res = await fetch(`${SYNC_URL}/transfer`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ subdir: slug }),
+      body: JSON.stringify({ subdir: slug, ...projectSyncForTransfer(project ?? emptyProjectSync()) }),
       signal: ctrl.signal,
     });
     const body = await readJson(res);
@@ -106,7 +112,11 @@ export async function runSyncTransfer(publishPath = ""): Promise<{ ok: boolean; 
   }
 }
 
-export function describeSync(status: SyncStatus | null): { label: string; tone: "ok" | "warn" | "err" } {
+export function describeSync(
+  status: SyncStatus | null,
+  project?: ProjectSync | null,
+  publishPath = "",
+): { label: string; tone: "ok" | "warn" | "err" } {
   if (!status) {
     return {
       label: "Sync nicht eingerichtet — einmal setup.command (Mac) bzw. setup.cmd (Windows) doppelklicken.",
@@ -140,8 +150,12 @@ export function describeSync(status: SyncStatus | null): { label: string; tone: 
       tone: "err",
     };
   }
-  const target = [status.host, status.remote].filter(Boolean).join(":");
-  const method = status.method === "rclone" ? "SFTP" : "Mutagen";
+  const slug = normalizePublishPath(publishPath);
+  const base = (project?.remote || status.remote || "").replace(/\/+$/, "");
+  const remote = project?.remote ? (slug ? `${base}/${slug}` : base) : status.remote;
+  const host = project?.host || status.host;
+  const target = [host, remote].filter(Boolean).join(":");
+  const method = (project?.method || status.method) === "rclone" ? "SFTP" : "Mutagen";
   return {
     label: target ? `Sync bereit (${method} → ${target})` : `Sync bereit (${method})`,
     tone: "ok",

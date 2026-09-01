@@ -266,13 +266,15 @@ export async function listRelativeFiles(
   return out;
 }
 
+const SKIP_COPY_NAMES = new Set([".DS_Store"]);
+
 export async function copyDirectoryHandle(
   source: FileSystemDirectoryHandle,
   dest: FileSystemDirectoryHandle,
   skipTop: Set<string> = new Set(),
 ): Promise<void> {
   for await (const [name, handle] of source.entries()) {
-    if (skipTop.has(name)) continue;
+    if (skipTop.has(name) || SKIP_COPY_NAMES.has(name)) continue;
     if (handle.kind === "directory") {
       const nextDest = await dest.getDirectoryHandle(name, { create: true });
       await copyDirectoryHandle(handle as FileSystemDirectoryHandle, nextDest);
@@ -281,6 +283,24 @@ export async function copyDirectoryHandle(
       await writeBinaryFile(dest, name, file);
     }
   }
+}
+
+export async function copyProjectFiles(
+  source: FileSystemDirectoryHandle,
+  dest: FileSystemDirectoryHandle,
+  onProgress?: (current: number, total: number) => void,
+): Promise<number> {
+  const files = (await listRelativeFiles(source)).filter(
+    (path) => !path.split("/").some((part) => SKIP_COPY_NAMES.has(part)),
+  );
+  onProgress?.(0, files.length);
+  let done = 0;
+  await runPool(files, 4, async (path) => {
+    await copyFileBetween(source, path, dest, path);
+    done += 1;
+    onProgress?.(done, files.length);
+  });
+  return files.length;
 }
 
 function openIdb(): Promise<IDBDatabase> {
