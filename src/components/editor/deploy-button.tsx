@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { appBase } from "@/lib/app-base";
 import { normalizePublishPath } from "@/lib/catalog";
-import { describeSync, fetchSyncStatus, missingDeployHint, runSyncTransfer, wrongDeployFolderHint, type SyncStatus } from "@/lib/c2-sync";
+import { describeSync, fetchSyncStatus, missingDeployHint, runSyncTransfer, startProtocolTransfer, wrongDeployFolderHint, type SyncStatus } from "@/lib/c2-sync";
 import { writeDeployFolder } from "@/lib/deploy";
 import { pickDirectory, supportsDirectoryPicker } from "@/lib/workspace";
 import { useEditorStore } from "@/store/editor-store";
@@ -127,13 +127,27 @@ export function DeployButton() {
   const runServer = async () => {
     setOpen(false);
     setBusy(true);
-    setMessage("Prüfe Server-Verbindung…");
+    setMessage("Übertrage auf den Likibox-Server…");
     try {
       let live = await fetchSyncStatus(true, publishPath);
       setSync(live);
       const view = describeSync(live, projectSync, publishPath);
-      if (!live || !live.configured || live.reachable === false) {
+      if (live && !live.configured) {
         setMessage(view.label);
+        return;
+      }
+      if (live?.reachable === false) {
+        setMessage(view.label);
+        return;
+      }
+      if (!live) {
+        startProtocolTransfer(publishPath);
+        const slug = normalizePublishPath(publishPath);
+        setMessage(
+          slug
+            ? `Übertragung auf den Likibox-Server unter /${slug}/ gestartet. Falls der Browser fragt: C2 Sync öffnen.`
+            : "Übertragung auf den Likibox-Server gestartet. Falls der Browser fragt: C2 Sync öffnen.",
+        );
         return;
       }
       if (!live.deployExists) {
@@ -166,17 +180,16 @@ export function DeployButton() {
           return;
         }
       }
-      setMessage("Übertrage auf den Server…");
       const result = await runSyncTransfer(publishPath, projectSync);
       setSync(await fetchSyncStatus(false, publishPath));
       const slug = normalizePublishPath(publishPath);
-      setMessage(
-        result.ok
-          ? slug
-            ? `Galerie ist auf dem Server unter /${slug}/.`
-            : "Galerie ist auf dem Server."
-          : result.error,
-      );
+      const remoteOk =
+        slug ? `Galerie ist auf dem Likibox-Server unter /${slug}/.` : "Galerie ist auf dem Likibox-Server.";
+      const launched =
+        slug
+          ? `Übertragung auf den Likibox-Server unter /${slug}/ gestartet. Falls der Browser fragt: C2 Sync öffnen.`
+          : "Übertragung auf den Likibox-Server gestartet. Falls der Browser fragt: C2 Sync öffnen.";
+      setMessage(result.ok ? (result.via === "app" ? launched : remoteOk) : result.error);
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "Übertragung fehlgeschlagen");
     } finally {

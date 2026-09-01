@@ -152,6 +152,7 @@ Start-Process -FilePath "powershell" -WindowStyle Hidden -ArgumentList @("-NoPro
 $launch = Join-Path $SyncHome "transfer-launch.cmd"
 @"
 @echo off
+set "C2_SYNC_URL=%~1"
 powershell -NoProfile -ExecutionPolicy Bypass -File "%USERPROFILE%\.c2-sync\transfer.ps1"
 if errorlevel 1 pause
 "@ | Set-Content -Path $launch -Encoding ASCII

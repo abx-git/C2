@@ -64,6 +64,10 @@ function Resolve-LocalSrc([string]$deploy, [string]$publish) {
   return $nested
 }
 
+if (-not $env:C2_PUBLISH_PATH -and $env:C2_SYNC_URL -match "subdir=([A-Za-z0-9][A-Za-z0-9._-]*)") {
+  $env:C2_PUBLISH_PATH = $Matches[1]
+}
+
 try {
   $publish = Sanitize-Publish ($env:C2_PUBLISH_PATH)
 } catch {

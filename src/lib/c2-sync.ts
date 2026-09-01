@@ -81,7 +81,7 @@ export async function fetchSyncStatus(probe = false, publishPath = ""): Promise<
 export async function runSyncTransfer(
   publishPath = "",
   project?: ProjectSync | null,
-): Promise<{ ok: boolean; error: string }> {
+): Promise<{ ok: boolean; error: string; via?: "helper" | "app" }> {
   const ctrl = new AbortController();
   const timer = window.setTimeout(() => ctrl.abort(), 30 * 60 * 1000);
   try {
@@ -93,7 +93,7 @@ export async function runSyncTransfer(
       signal: ctrl.signal,
     });
     const body = await readJson(res);
-    if (body.ok === true) return { ok: true, error: "" };
+    if (body.ok === true) return { ok: true, error: "", via: "helper" };
     const error =
       typeof body.error === "string" && body.error.trim()
         ? body.error
@@ -103,13 +103,27 @@ export async function runSyncTransfer(
     if (err instanceof DOMException && err.name === "AbortError") {
       return { ok: false, error: "Zeitüberschreitung bei der Übertragung." };
     }
-    return {
-      ok: false,
-      error: "Sync-Helfer läuft nicht. Nach dem Anmelden startet er selbst, sonst einmal setup.command öffnen.",
-    };
+    startProtocolTransfer(publishPath);
+    return { ok: true, error: "", via: "app" };
   } finally {
     window.clearTimeout(timer);
   }
+}
+
+/** Startet die Mac/Windows-App, die rclone/Mutagen auf den Likibox-Server ausführt. */
+export function startProtocolTransfer(publishPath = ""): void {
+  if (typeof document === "undefined") return;
+  const slug = normalizePublishPath(publishPath);
+  const url = slug
+    ? `c2sync://transfer?subdir=${encodeURIComponent(slug)}`
+    : "c2sync://transfer";
+  const link = document.createElement("a");
+  link.href = url;
+  link.rel = "noopener";
+  link.style.display = "none";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
 }
 
 function pathLeaf(path: string | null | undefined): string {
@@ -164,12 +178,12 @@ export function describeSync(
   if (!status) {
     if (pageCannotReachLocalHelper()) {
       return {
-        label: "Diese Seite erreicht den Sync-Helfer nicht. Editor unter http://localhost:3000 öffnen.",
+        label: "Ziel ist der Likibox-Server. Dieser Tab spricht den Helfer nicht direkt an — „Zum Server“ startet die Übertragung auf diesem Mac.",
         tone: "warn",
       };
     }
     return {
-      label: "Sync-Helfer läuft gerade nicht. Setup muss nicht erneut laufen — nach dem Anmelden startet er selbst. Sonst einmal setup.command öffnen.",
+      label: "Sync-Helfer läuft gerade nicht. „Zum Server“ startet trotzdem die Übertragung auf den Likibox-Server. Sonst einmal setup.command öffnen.",
       tone: "warn",
     };
   }
@@ -214,7 +228,7 @@ export function describeSync(
   const target = [host, remote].filter(Boolean).join(":");
   const method = (project?.method || status.method) === "rclone" ? "SFTP" : "Mutagen";
   return {
-    label: target ? `Sync bereit (${method} → ${target})` : `Sync bereit (${method})`,
+    label: target ? `Bereit für den Likibox-Server (${method} → ${target})` : `Bereit für den Likibox-Server (${method})`,
     tone: "ok",
   };
 }

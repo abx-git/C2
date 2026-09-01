@@ -239,17 +239,7 @@ start_agent
 APP="$SYNC_HOME/C2Sync.app"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS"
-cat >"$APP/Contents/MacOS/c2sync" <<'EOF'
-#!/bin/bash
-LOG="${HOME}/.c2-sync/transfer.log"
-mkdir -p "${HOME}/.c2-sync"
-if "${HOME}/.c2-sync/transfer.sh" >"$LOG" 2>&1; then
-  osascript -e 'display notification "Galerie ist auf dem Server." with title "C2"' >/dev/null 2>&1 || true
-  exit 0
-fi
-osascript -e 'display dialog "Übertragung fehlgeschlagen. Details stehen in ~/.c2-sync/transfer.log." buttons {"OK"} default button "OK" with icon stop' >/dev/null 2>&1 || true
-exit 1
-EOF
+cp "$HERE/c2sync-macos.sh" "$APP/Contents/MacOS/c2sync"
 chmod +x "$APP/Contents/MacOS/c2sync"
 cat >"$APP/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
