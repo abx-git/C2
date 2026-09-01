@@ -44,11 +44,7 @@ export function SiteTreeEditor() {
     <div className="mx-auto w-full max-w-4xl">
       <h2 className="mb-3 text-sm font-medium">Seitenstruktur</h2>
       <p className="mb-4 text-sm text-[var(--edit-muted)]">
-        Die Navigation folgt diesem Baum. Eine Gruppe ist ein Ordner — ihre Galerie-Seiten liegen darin. Welche Bilder
-        eine Seite zeigt, legt sie selbst fest (Tags, Sterne, Suche). Ohne Kriterien erscheinen alle Bilder. Eine eigene
-        Reihenfolge gilt nur für diese Seite, sonst die allgemeine Sortierung unter Bilder. Das Index-Bild erscheint auf
-        der Work-Übersicht. Sichtbarkeit: öffentlich in der Navigation, eingeschränkt nur per Link, privat nur im Editor.
-        Eine Gruppe vererbt die strengere Stufe an ihre Seiten.
+        Navigation und Filter je Seite. Ohne Kriterien erscheinen alle Bilder.
       </p>
       <label className="mb-3 block text-xs text-[var(--edit-muted)]">
         Titel der Sammlung
@@ -129,11 +125,6 @@ function LayoutFields({
         </label>
         <div className="text-xs text-[var(--edit-muted)] sm:col-span-2">
           <LayoutColumnsPicker value={layout.columns} onChange={(columns) => set({ columns })} />
-          <p className="mt-1.5 text-[0.7rem] leading-relaxed">
-            1–6 Bilder füllen die Zeile fest. „2–3“ wechselt. „Rand“ legt so viele Bilder in eine Zeile, bis die
-            aktuelle Breite erreicht ist — Zeile min/max steuert dann die Packdichte. Kleine Originale werden nicht
-            über ihre Pixelbreite vergrößert.
-          </p>
         </div>
         <div className="text-xs text-[var(--edit-muted)] sm:col-span-2">
           Hintergrund

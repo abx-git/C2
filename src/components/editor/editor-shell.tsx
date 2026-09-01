@@ -25,7 +25,6 @@ export function EditorShell() {
   const restoreWorkspace = useEditorStore((s) => s.restoreWorkspace);
   const connectWorkspace = useEditorStore((s) => s.connectWorkspace);
   const reauthorizeWorkspace = useEditorStore((s) => s.reauthorizeWorkspace);
-  const disconnect = useEditorStore((s) => s.disconnect);
   const saveCatalog = useEditorStore((s) => s.saveCatalog);
   const status = useEditorStore((s) => s.status);
   const restoring = useEditorStore((s) => s.restoring);
@@ -69,50 +68,31 @@ export function EditorShell() {
 
   return (
     <div className="flex h-full max-h-full flex-col overflow-hidden">
-      <header className="relative z-20 flex shrink-0 flex-wrap items-center gap-3 border-b border-[var(--edit-line)] bg-[var(--edit-panel)] px-4 py-3">
-        <Link href="/" className="text-sm font-semibold tracking-wide">
+      <header className="relative z-20 flex shrink-0 items-center gap-4 border-b border-[var(--edit-line)] bg-[var(--edit-panel)] px-4 py-2">
+        <Link href="/" className="text-sm font-medium tracking-wide">
           C2
         </Link>
-        <span className="text-xs text-[var(--edit-muted)]">Edit</span>
-        {TABS.map((item) => (
-          <button
-            key={item.id}
-            type="button"
-            className={`edit-btn ${activeTab === item.id ? "edit-btn-primary" : ""}`}
-            onClick={() => {
-              if (status !== "ready") {
-                useEditorStore.setState({
-                  message: "Zuerst einen Workspace-Ordner öffnen.",
-                });
-                return;
-              }
-              setTab(item.id);
-            }}
-          >
-            {item.label}
-          </button>
-        ))}
-        <div className="ml-auto flex flex-wrap items-center gap-2">
-          {workspaceLabel ? (
-            <span className="text-xs text-[var(--edit-muted)]">
-              {workspaceLabel}
-              {dirty ? " · ungespeichert" : ""}
-            </span>
-          ) : null}
-          {status === "ready" ? (
-            <>
-              <button type="button" className="edit-btn" onClick={() => void connectWorkspace()}>
-                Anderen Ordner
-              </button>
-              <button type="button" className="edit-btn" onClick={disconnect}>
-                Trennen
-              </button>
-            </>
-          ) : (
-            <button type="button" className="edit-btn-primary edit-btn" onClick={() => void connectWorkspace()}>
-              Workspace öffnen
+        <nav className="flex items-center gap-0.5">
+          {TABS.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              className={`edit-tab ${activeTab === item.id ? "is-active" : ""}`}
+              onClick={() => {
+                if (status !== "ready") {
+                  useEditorStore.setState({
+                    message: "Zuerst einen Workspace-Ordner öffnen.",
+                  });
+                  return;
+                }
+                setTab(item.id);
+              }}
+            >
+              {item.label}
             </button>
-          )}
+          ))}
+        </nav>
+        <div className="ml-auto">
           <DeployButton />
         </div>
       </header>
@@ -165,17 +145,17 @@ export function EditorShell() {
           </div>
         ) : (
           <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-[var(--edit-line)]">
-            <div className="flex shrink-0 gap-1 border-b border-[var(--edit-line)] bg-[var(--edit-panel)] px-3 py-2">
+            <div className="flex shrink-0 gap-1 border-b border-[var(--edit-line)] bg-[var(--edit-panel)] px-3 py-1.5">
               <button
                 type="button"
-                className={`edit-btn ${previewKind === "gallery" ? "edit-btn-primary" : ""}`}
+                className={`edit-tab ${previewKind === "gallery" ? "is-active" : ""}`}
                 onClick={() => setPreviewKind("gallery")}
               >
                 Galerie
               </button>
               <button
                 type="button"
-                className={`edit-btn ${previewKind === "roadtrip" ? "edit-btn-primary" : ""}`}
+                className={`edit-tab ${previewKind === "roadtrip" ? "is-active" : ""}`}
                 onClick={() => setPreviewKind("roadtrip")}
               >
                 Roadtrip

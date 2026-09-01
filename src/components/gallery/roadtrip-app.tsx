@@ -9,7 +9,6 @@ import {
 } from "@/lib/catalog";
 import { formatGeo, formatPhotoDate, roadtripGeoPhotos, roadtripPhotos } from "@/lib/roadtrip";
 import { OsmMap } from "./osm-map";
-import { Lightbox } from "./lightbox";
 import { SaveGuard } from "./protect-images";
 
 type RoadtripAppProps = {
@@ -31,7 +30,6 @@ export function RoadtripApp({ catalog, resolveUrl, className }: RoadtripAppProps
   );
   const [index, setIndex] = useState(0);
   const [tray, setTray] = useState(false);
-  const [lightbox, setLightbox] = useState(false);
   const stageRef = useRef<HTMLDivElement>(null);
   const cardsRef = useRef<(HTMLButtonElement | null)[]>([]);
   const programmatic = useRef(false);
@@ -128,10 +126,9 @@ export function RoadtripApp({ catalog, resolveUrl, className }: RoadtripAppProps
   }, [photos.length]);
 
   const openPhoto = useCallback(
-    (next: number, showLightbox = false) => {
+    (next: number) => {
       go(next);
       setTray(false);
-      if (showLightbox) setLightbox(true);
     },
     [go],
   );
@@ -149,7 +146,7 @@ export function RoadtripApp({ catalog, resolveUrl, className }: RoadtripAppProps
         }
         return;
       }
-      if (lightbox || tray) return;
+      if (tray) return;
       if (event.key === "ArrowRight" || event.key === "ArrowDown") {
         event.preventDefault();
         go(indexRef.current + 1);
@@ -166,7 +163,7 @@ export function RoadtripApp({ catalog, resolveUrl, className }: RoadtripAppProps
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [go, photos.length, lightbox, tray]);
+  }, [go, photos.length, tray]);
 
   const traveledIds = useMemo(() => {
     const ids = new Set<string>();
@@ -247,8 +244,7 @@ export function RoadtripApp({ catalog, resolveUrl, className }: RoadtripAppProps
                       } as React.CSSProperties
                     }
                     onClick={() => {
-                      if (active) setLightbox(true);
-                      else go(i);
+                      if (!active) go(i);
                     }}
                     aria-current={active ? "true" : undefined}
                     aria-label={photoLabel(photo)}
@@ -307,7 +303,7 @@ export function RoadtripApp({ catalog, resolveUrl, className }: RoadtripAppProps
               traveledIds={traveledIds}
               onSelect={(id) => {
                 const next = photos.findIndex((photo) => photo.id === id);
-                if (next >= 0) openPhoto(next, true);
+                if (next >= 0) openPhoto(next);
               }}
             />
           </aside>
@@ -342,7 +338,7 @@ export function RoadtripApp({ catalog, resolveUrl, className }: RoadtripAppProps
                   key={photo.id}
                   type="button"
                   className={`rt-tray-shot${i === index ? " is-active" : ""}`}
-                  onClick={() => openPhoto(i, true)}
+                  onClick={() => openPhoto(i)}
                   aria-label={photoLabel(photo)}
                   aria-current={i === index ? "true" : undefined}
                 >
@@ -354,16 +350,6 @@ export function RoadtripApp({ catalog, resolveUrl, className }: RoadtripAppProps
               ))}
             </div>
           </div>
-        ) : null}
-
-        {lightbox && photos.length ? (
-          <Lightbox
-            photos={photos}
-            index={index}
-            resolveUrl={(photo) => resolveUrl(photo, "display")}
-            onClose={() => setLightbox(false)}
-            onIndex={(next) => go(next)}
-          />
         ) : null}
       </div>
     </SaveGuard>

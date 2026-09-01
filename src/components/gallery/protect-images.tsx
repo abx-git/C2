@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { galleryThemeStyle, type Catalog, type Photo, type ProtectionCrypto } from "@/lib/catalog";
+import { publicAssetUrl } from "@/lib/catalog-source";
 import { decryptBytes, sessionPasswordKey, unlockGalleryKey } from "@/lib/image-protect";
 
 const HINT_MS = 2200;
@@ -42,20 +43,14 @@ export function SaveGuard({ children, className }: { children: ReactNode; classN
   );
 }
 
-function filePrefix(base: string): string {
-  const prefix = base.replace(/\/$/, "") || ".";
-  return prefix;
-}
-
 export function useDecryptedUrls(
   catalog: Catalog,
   key: CryptoKey | null,
-  base = ".",
+  base?: string,
 ): (photo: Photo, kind: "thumb" | "display") => string {
   const [urls, setUrls] = useState<Record<string, string>>({});
   const blobUrls = useRef<string[]>([]);
   const inflight = useRef(new Map<string, Promise<void>>());
-  const prefix = filePrefix(base);
 
   useEffect(() => {
     inflight.current = new Map();
@@ -76,7 +71,7 @@ export function useDecryptedUrls(
         if (inflight.current.has(id)) continue;
         const path = kind === "thumb" ? photo.files.thumb : photo.files.display;
         const work = (async () => {
-          const res = await fetch(`${prefix}/${path}`);
+          const res = await fetch(publicAssetUrl(path, base));
           if (!res.ok) throw new Error(`Bild fehlt (${res.status})`);
           const plain = await decryptBytes(key, await res.arrayBuffer());
           const url = URL.createObjectURL(new Blob([plain], { type: "image/webp" }));
@@ -88,14 +83,14 @@ export function useDecryptedUrls(
         inflight.current.set(id, work);
       }
     }
-  }, [catalog.photos.photos, key, prefix]);
+  }, [catalog.photos.photos, key, base]);
 
   return useCallback(
     (photo: Photo, kind: "thumb" | "display") => {
-      if (!key) return `${prefix}/${kind === "thumb" ? photo.files.thumb : photo.files.display}`;
+      if (!key) return publicAssetUrl(kind === "thumb" ? photo.files.thumb : photo.files.display, base);
       return urls[`${photo.id}:${kind}`] ?? "";
     },
-    [key, prefix, urls],
+    [key, base, urls],
   );
 }
 

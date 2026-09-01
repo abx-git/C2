@@ -72,8 +72,108 @@ body {
   border-color: var(--edit-ink);
 }
 
-.edit-btn-primary:hover:not(:disabled) {
-  background: #333230;
+.edit-tab {
+  border: 0;
+  background: transparent;
+  padding: 0.35rem 0.55rem;
+  font-size: 0.85rem;
+  color: var(--edit-muted);
+  cursor: pointer;
+}
+
+.edit-tab:hover {
+  color: var(--edit-ink);
+}
+
+.edit-tab.is-active {
+  color: var(--edit-ink);
+  font-weight: 500;
+}
+
+.edit-menu {
+  position: relative;
+}
+
+.edit-menu-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  max-width: 16rem;
+  border: 0;
+  background: transparent;
+  padding: 0.3rem 0.15rem 0.3rem 0.4rem;
+  font-size: 0.78rem;
+  color: var(--edit-muted);
+  cursor: pointer;
+}
+
+.edit-menu-trigger:hover:not(:disabled) {
+  color: var(--edit-ink);
+}
+
+.edit-menu-trigger:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.edit-menu-dot {
+  width: 0.4rem;
+  height: 0.4rem;
+  border-radius: 999px;
+  background: var(--edit-ink);
+}
+
+.edit-menu-dot.is-err {
+  background: #b42318;
+}
+
+.edit-menu-panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 40;
+  min-width: 15rem;
+  padding: 0.3rem;
+  border-radius: 8px;
+  border: 1px solid var(--edit-line);
+  background: var(--edit-panel);
+  box-shadow: 0 10px 28px rgba(28, 27, 25, 0.12);
+}
+
+.edit-menu-panel button {
+  display: flex;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  padding: 0.42rem 0.55rem;
+  text-align: left;
+  font-size: 0.82rem;
+  color: var(--edit-ink);
+  cursor: pointer;
+  border-radius: 6px;
+}
+
+.edit-menu-panel button:hover:not(:disabled) {
+  background: #efece6;
+}
+
+.edit-menu-panel button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.edit-menu-sep {
+  height: 1px;
+  margin: 0.3rem 0.4rem;
+  background: var(--edit-line);
+}
+
+.edit-menu-note {
+  margin: 0;
+  padding: 0.35rem 0.55rem 0.5rem;
+  font-size: 0.7rem;
+  line-height: 1.4;
+  color: var(--edit-muted);
 }
 
 .edit-geo-map {

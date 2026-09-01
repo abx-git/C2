@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { emptyCatalog, galleryThemeStyle, toPublicCatalog, type Catalog } from "@/lib/catalog";
-import { createHttpCatalogSource, readGalleryMode } from "@/lib/catalog-source";
+import { createHttpCatalogSource, deployPageBase, readGalleryMode } from "@/lib/catalog-source";
 import { GalleryApp } from "@/components/gallery/gallery-app";
 import { RoadtripApp } from "@/components/gallery/roadtrip-app";
 import { GalleryUnlock, useDecryptedUrls, useGalleryUnlock } from "@/components/gallery/protect-images";
@@ -12,7 +12,7 @@ export function HttpGallery() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const source = createHttpCatalogSource(".");
+    const source = createHttpCatalogSource(deployPageBase());
     void source
       .loadCatalog()
       .then((loaded) => setCatalog(toPublicCatalog(loaded)))
@@ -48,7 +48,7 @@ export function HttpGallery() {
 function LoadedGallery({ catalog, error }: { catalog: Catalog; error: string | null }) {
   const crypto = catalog.site.protection?.crypto;
   const { key, locked, checking, error: unlockError, busy, unlock } = useGalleryUnlock(crypto);
-  const resolveUrl = useDecryptedUrls(catalog, crypto ? key : null);
+  const resolveUrl = useDecryptedUrls(catalog, crypto ? key : null, deployPageBase());
   const mode = readGalleryMode();
 
   if (checking) {

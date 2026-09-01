@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   catalogFeed,
-  DEFAULT_LAYOUT,
   emptyFilterSpec,
   isEmptyFilterSpec,
   type FeedItem,
@@ -12,7 +11,6 @@ import {
 } from "@/lib/catalog";
 import { Lightbox } from "@/components/gallery/lightbox";
 import { FilterCriteriaBar } from "@/components/editor/filter-criteria";
-import { LayoutColumnsPicker } from "@/components/editor/layout-columns-picker";
 import { confirmRemoveSelection, MetadataPanel } from "@/components/editor/metadata-panel";
 import { fitMaxEdge, THUMB_MAX_EDGE } from "@/lib/image-prepare";
 import { useEditorStore } from "@/store/editor-store";
@@ -66,7 +64,6 @@ export function PhotoLibrary() {
   const reorderPhotos = useEditorStore((s) => s.reorderPhotos);
   const addTextTile = useEditorStore((s) => s.addTextTile);
   const deleteItems = useEditorStore((s) => s.deleteItems);
-  const updateSite = useEditorStore((s) => s.updateSite);
   const importProgress = useEditorStore((s) => s.importProgress);
   const canWrite = useEditorStore((s) => s.canWrite);
   const [draggingFiles, setDraggingFiles] = useState(false);
@@ -221,20 +218,16 @@ export function PhotoLibrary() {
             {filterActive ? `${visible.length} von ${photos.length + textCount}` : `${photos.length} Bild${photos.length === 1 ? "" : "er"}`}
             {textCount ? ` · ${textCount} Text` : ""}
             {selectedPhotoIds.length > 1 ? ` · ${selectedPhotoIds.length} ausgewählt` : ""}
-            {photos.length + textCount > 1 ? " · ziehen zum Sortieren" : ""}
             {importProgress
               ? ` · Import ${importProgress.current}/${importProgress.total}: ${importProgress.name}`
               : ""}
           </p>
           <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              className="edit-btn"
-              disabled={!visible.length}
-              onClick={() => selectPhotos(visibleIds)}
-            >
-              Sichtbare wählen
-            </button>
+            {filterActive && visible.length > 0 ? (
+              <button type="button" className="edit-btn" onClick={() => selectPhotos(visibleIds)}>
+                Sichtbare wählen
+              </button>
+            ) : null}
             {selectedPhotoIds.length > 0 ? (
               <button type="button" className="edit-btn" onClick={() => selectPhotos([])}>
                 Auswahl aufheben
@@ -273,13 +266,6 @@ export function PhotoLibrary() {
           <span className="mr-1 text-xs text-[var(--edit-muted)]">Ansicht:</span>
           <FilterCriteriaBar spec={spec} onChange={setSpec} tags={tags} className="contents" />
         </div>
-        <LayoutColumnsPicker
-          value={(catalog.site.layout ?? DEFAULT_LAYOUT).columns}
-          onChange={(columns) => {
-            const layout = catalog.site.layout ?? DEFAULT_LAYOUT;
-            updateSite({ ...catalog.site, layout: { ...layout, columns } });
-          }}
-        />
       </div>
       {emptyLibrary ? (
         <button

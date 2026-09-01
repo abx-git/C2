@@ -1,9 +1,4 @@
-import {
-  emptyCatalog,
-  parseCatalog,
-  type Catalog,
-  type Photo,
-} from "./catalog";
+import { emptyCatalog, parseCatalog, type Catalog, type Photo } from "./catalog";
 
 export type CatalogSource = {
   loadCatalog: () => Promise<Catalog>;
@@ -72,6 +67,20 @@ export function injectCatalogIntoHtml(html: string, bootstrap: string): string {
   return `${tag}${stripped}`;
 }
 
+/** Verzeichnis der aktuellen Seite — nötig für Deploys in Unterordnern wie /montreal/. */
+export function deployPageBase(): string {
+  if (typeof window === "undefined") return ".";
+  const path = window.location.pathname.replace(/\/index\.html$/i, "").replace(/\/+$/, "");
+  return path || ".";
+}
+
+export function publicAssetUrl(relativePath: string, base = deployPageBase()): string {
+  const file = relativePath.replace(/^\.\//, "").replace(/^\/+/, "");
+  const prefix = base.replace(/\/$/, "") || ".";
+  if (prefix === ".") return `./${file}`;
+  return `${prefix}/${file}`;
+}
+
 export async function loadPublicCatalog(base = "."): Promise<Catalog> {
   const prefix = base.replace(/\/$/, "") || ".";
   const embedded = readEmbeddedCatalog();
@@ -92,8 +101,7 @@ export function createHttpCatalogSource(base = "."): CatalogSource {
       return loadPublicCatalog(prefix);
     },
     imageUrl(relativePath: string) {
-      const path = relativePath.replace(/^\.\//, "").replace(/^\/+/, "");
-      return `${prefix}/${path}`;
+      return publicAssetUrl(relativePath, prefix);
     },
   };
 }
