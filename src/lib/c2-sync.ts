@@ -146,21 +146,28 @@ export function wrongDeployFolderHint(status: SyncStatus | null, publishPath = "
   return "Der gewählte Ordner ist nicht der Deploy-Ordner der Hauptgalerie.";
 }
 
+function isLoopbackHost(hostname: string): boolean {
+  return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]";
+}
+
+function pageCannotReachLocalHelper(): boolean {
+  if (typeof window === "undefined") return false;
+  const { protocol, hostname } = window.location;
+  return protocol === "https:" && !isLoopbackHost(hostname);
+}
+
 export function describeSync(
   status: SyncStatus | null,
   project?: ProjectSync | null,
   publishPath = "",
 ): { label: string; tone: "ok" | "warn" | "err" } {
-  if (typeof window !== "undefined") {
-    const { protocol, hostname } = window.location;
-    if (protocol === "https:" && hostname !== "localhost" && hostname !== "127.0.0.1") {
+  if (!status) {
+    if (pageCannotReachLocalHelper()) {
       return {
-        label: "Zum Server geht nur im lokalen Editor (npm run dev). GitHub Pages erreicht den Helfer auf diesem Rechner nicht.",
+        label: "Diese Seite erreicht den Sync-Helfer nicht. Editor unter http://localhost:3000 öffnen.",
         tone: "warn",
       };
     }
-  }
-  if (!status) {
     return {
       label: "Sync-Helfer läuft gerade nicht. Setup muss nicht erneut laufen — nach dem Anmelden startet er selbst. Sonst einmal setup.command öffnen.",
       tone: "warn",
