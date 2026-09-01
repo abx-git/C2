@@ -87,7 +87,26 @@ if ($method -eq "rclone") {
   $remoteName = if ($cfg["rclone_remote"]) { $cfg["rclone_remote"] } else { "c2-sync" }
   $dest = "${remoteName}:$remote"
   Write-Host "rclone → $dest"
-  & rclone sync $deploy $dest --sftp-shell-type none --sftp-known-hosts-file none --create-empty-src-dirs --exclude ".DS_Store" --progress
+  $rcloneArgs = @(
+    "sync", $deploy, $dest,
+    "--sftp-shell-type", "none",
+    "--sftp-known-hosts-file", "none",
+    "--create-empty-src-dirs",
+    "--exclude", ".DS_Store"
+  )
+  if (-not $publish) {
+    $listing = & rclone lsf $dest --dirs-only --sftp-shell-type none --sftp-known-hosts-file none 2>$null
+    foreach ($dir in $listing) {
+      $name = "$dir".TrimEnd("/")
+      if (-not $name) { continue }
+      if (-not (Test-Path (Join-Path $deploy $name))) {
+        Write-Host "behalte Server-Ordner /$name/"
+        $rcloneArgs += @("--exclude", "/$name/**", "--exclude", "/$name")
+      }
+    }
+  }
+  $rcloneArgs += "--progress"
+  & rclone @rcloneArgs
   if ($LASTEXITCODE -ne 0) { Fail "rclone sync fehlgeschlagen." }
   Write-Host "Fertig."
   Record-Last $true $null

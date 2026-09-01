@@ -105,12 +105,26 @@ if [ "$method" = "rclone" ]; then
   command -v rclone >/dev/null 2>&1 || fail "rclone fehlt. Setup erneut ausführen."
   dest="${rclone_remote:-c2-sync}:${dest_remote}"
   echo "rclone → $dest"
-  rclone sync "$src" "$dest" \
+  set -- rclone sync "$src" "$dest" \
     --sftp-shell-type none \
     --sftp-known-hosts-file none \
     --create-empty-src-dirs \
-    --exclude ".DS_Store" \
-    --progress || fail "rclone sync fehlgeschlagen. Server-Zugang und Ordner prüfen."
+    --exclude ".DS_Store"
+  # Root-Sync darf andere Projekte (z. B. /montreal/) nicht löschen.
+  if [ -z "$publish" ]; then
+    listing=$(rclone lsf "$dest" --dirs-only --sftp-shell-type none --sftp-known-hosts-file none 2>/dev/null || true)
+    while IFS= read -r dir || [ -n "$dir" ]; do
+      dir=${dir%/}
+      [ -n "$dir" ] || continue
+      if [ ! -e "$src/$dir" ]; then
+        echo "behalte Server-Ordner /$dir/"
+        set -- "$@" --exclude "/${dir}/**" --exclude "/${dir}"
+      fi
+    done <<EOF
+$listing
+EOF
+  fi
+  "$@" --progress || fail "rclone sync fehlgeschlagen. Server-Zugang und Ordner prüfen."
   record_last 1 ""
   notify "Galerie ist auf dem Server."
   echo "Fertig."

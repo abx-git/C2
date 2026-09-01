@@ -40,3 +40,5 @@ Unter **Struktur** kann ein **Unterordner auf dem Server** stehen (z. B. `montre
 2. **Zum Server** überträgt nach `{remote}/{slug}` (z. B. `likibox/montreal`), ohne den Hauptordner zu überschreiben.
 
 Die Desktop-Verknüpfung bleibt beim Haupt-Deploy. Für Unterordner **Zum Server** im jeweiligen Workspace nutzen.
+
+Setup nur aus diesem C2-Ordner starten, nicht aus einer älteren Kopie. Ein Root-Sync löscht andere Server-Unterordner (z. B. `montreal`) nicht mehr.
