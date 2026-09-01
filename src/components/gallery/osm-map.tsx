@@ -149,6 +149,8 @@ export function OsmMap({
     marker,
     pos: project(marker, view, originX, originY),
   }));
+  const pointsRef = useRef(points);
+  pointsRef.current = points;
 
   const line = points
     .map((item) => `${item.pos.x.toFixed(1)},${item.pos.y.toFixed(1)}`)
@@ -204,6 +206,8 @@ export function OsmMap({
       className={["rt-map-canvas", onPick ? "is-pick" : "", className].filter(Boolean).join(" ")}
       onPointerDown={(event) => {
         if (event.button !== 0) return;
+        const target = event.target as HTMLElement | null;
+        if (target?.closest(".rt-map-zoom, .rt-map-copy, a, button")) return;
         (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
         drag.current = { x: event.clientX, y: event.clientY, view };
       }}
@@ -223,19 +227,34 @@ export function OsmMap({
       onPointerUp={(event) => {
         const start = drag.current;
         drag.current = null;
-        if (!onPick || !start) return;
-        if (Math.hypot(event.clientX - start.x, event.clientY - start.y) > 6) return;
+        if (!start || Math.hypot(event.clientX - start.x, event.clientY - start.y) > 6) return;
         const rect = event.currentTarget.getBoundingClientRect();
-        const current = viewRef.current;
-        onPick(
-          pixelToLatLng(
-            { lat: current.lat, lng: current.lng, zoom: current.zoom },
-            event.clientX - rect.left,
-            event.clientY - rect.top,
-            size.w,
-            size.h,
-          ),
-        );
+        const x = event.clientX - rect.left;
+        const y = event.clientY - rect.top;
+        if (onPick) {
+          const current = viewRef.current;
+          onPick(
+            pixelToLatLng(
+              { lat: current.lat, lng: current.lng, zoom: current.zoom },
+              x,
+              y,
+              size.w,
+              size.h,
+            ),
+          );
+          return;
+        }
+        if (!onSelect) return;
+        let bestId: string | null = null;
+        let bestDist = 28;
+        for (const point of pointsRef.current) {
+          const dist = Math.hypot(point.pos.x - x, point.pos.y - y);
+          if (dist < bestDist) {
+            bestDist = dist;
+            bestId = point.marker.id;
+          }
+        }
+        if (bestId) onSelect(bestId);
       }}
       onPointerCancel={() => {
         drag.current = null;
@@ -264,13 +283,10 @@ export function OsmMap({
           const done = traveledIds?.has(marker.id) ?? false;
           return (
             <g key={marker.id} transform={`translate(${pos.x} ${pos.y})`}>
+              <circle className="rt-map-hit" r={14} />
               <circle
                 className={`rt-map-pin${activeMark ? " is-active" : ""}${done ? " is-traveled" : ""}`}
-                r={activeMark ? 7 : 4.5}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onSelect?.(marker.id);
-                }}
+                r={activeMark ? 8 : 5.5}
               />
             </g>
           );

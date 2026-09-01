@@ -9,6 +9,7 @@ import {
 } from "@/lib/catalog";
 import { formatGeo, formatPhotoDate, roadtripGeoPhotos, roadtripPhotos } from "@/lib/roadtrip";
 import { OsmMap } from "./osm-map";
+import { Lightbox } from "./lightbox";
 import { SaveGuard } from "./protect-images";
 
 type RoadtripAppProps = {
@@ -29,6 +30,8 @@ export function RoadtripApp({ catalog, resolveUrl, className }: RoadtripAppProps
     [geoPhotos],
   );
   const [index, setIndex] = useState(0);
+  const [tray, setTray] = useState(false);
+  const [lightbox, setLightbox] = useState(false);
   const stageRef = useRef<HTMLDivElement>(null);
   const cardsRef = useRef<(HTMLButtonElement | null)[]>([]);
   const programmatic = useRef(false);
@@ -97,12 +100,29 @@ export function RoadtripApp({ catalog, resolveUrl, className }: RoadtripAppProps
     };
   }, [photos.length]);
 
+  const openPhoto = useCallback(
+    (next: number, showLightbox = false) => {
+      go(next);
+      setTray(false);
+      if (showLightbox) setLightbox(true);
+    },
+    [go],
+  );
+
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return;
       const target = event.target as HTMLElement | null;
       const tag = target?.tagName;
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || target?.isContentEditable) return;
+      if (event.key === "Escape") {
+        if (tray) {
+          event.preventDefault();
+          setTray(false);
+        }
+        return;
+      }
+      if (lightbox || tray) return;
       if (event.key === "ArrowRight" || event.key === "ArrowDown") {
         event.preventDefault();
         go(indexRef.current + 1);
@@ -119,7 +139,7 @@ export function RoadtripApp({ catalog, resolveUrl, className }: RoadtripAppProps
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [go, photos.length]);
+  }, [go, photos.length, lightbox, tray]);
 
   const traveledIds = useMemo(() => {
     const ids = new Set<string>();
@@ -147,11 +167,32 @@ export function RoadtripApp({ catalog, resolveUrl, className }: RoadtripAppProps
       >
         <header className="rt-head">
           <span className="rt-title">{catalog.site.title}</span>
-          {photos.length ? (
-            <span className="rt-count">
-              {index + 1} / {photos.length}
-            </span>
-          ) : null}
+          <div className="rt-head-tools">
+            {photos.length ? (
+              <span className="rt-count">
+                {index + 1} / {photos.length}
+              </span>
+            ) : null}
+            {photos.length > 0 ? (
+              <button
+                type="button"
+                className="rt-tool"
+                onClick={() => setTray(true)}
+                title="Lichtkasten: alle Bilder"
+                aria-label="Lichtkasten: alle Bilder"
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path
+                    d="M4 5h6v6H4zM14 5h6v6h-6zM4 13h6v6H4zM14 13h6v6h-6z"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.2"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </button>
+            ) : null}
+          </div>
         </header>
 
         <div className="rt-stream-wrap">
@@ -172,7 +213,10 @@ export function RoadtripApp({ catalog, resolveUrl, className }: RoadtripAppProps
                       cardsRef.current[i] = el;
                     }}
                     className={`rt-card${active ? " is-active" : ""}`}
-                    onClick={() => go(i)}
+                    onClick={() => {
+                      if (active) setLightbox(true);
+                      else go(i);
+                    }}
                     aria-current={active ? "true" : undefined}
                     aria-label={photoLabel(photo)}
                   >
@@ -207,7 +251,7 @@ export function RoadtripApp({ catalog, resolveUrl, className }: RoadtripAppProps
               traveledIds={traveledIds}
               onSelect={(id) => {
                 const next = photos.findIndex((photo) => photo.id === id);
-                if (next >= 0) go(next);
+                if (next >= 0) openPhoto(next, true);
               }}
             />
           </aside>
@@ -234,6 +278,50 @@ export function RoadtripApp({ catalog, resolveUrl, className }: RoadtripAppProps
             </div>
           ) : null}
         </footer>
+
+        {tray ? (
+          <div className="rt-tray" role="dialog" aria-label="Lichtkasten">
+            <div className="rt-tray-bar">
+              <span>Lichtkasten</span>
+              <button type="button" className="rt-tool" onClick={() => setTray(false)} aria-label="Schließen">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path
+                    d="M7 7l10 10M17 7L7 17"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.2"
+                    strokeLinecap="round"
+                  />
+                </svg>
+              </button>
+            </div>
+            <div className="rt-tray-grid">
+              {photos.map((photo, i) => (
+                <button
+                  key={photo.id}
+                  type="button"
+                  className={`rt-tray-shot${i === index ? " is-active" : ""}`}
+                  onClick={() => openPhoto(i, true)}
+                  aria-label={photoLabel(photo)}
+                  aria-current={i === index ? "true" : undefined}
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={resolveUrl(photo, "thumb")} alt="" draggable={false} />
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
+        {lightbox && photos.length ? (
+          <Lightbox
+            photos={photos}
+            index={index}
+            resolveUrl={(photo) => resolveUrl(photo, "display")}
+            onClose={() => setLightbox(false)}
+            onIndex={(next) => go(next)}
+          />
+        ) : null}
       </div>
     </SaveGuard>
   );
