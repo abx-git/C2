@@ -3,12 +3,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   DEFAULT_LAYOUT,
+  clampSlideshowInterval,
   galleryThemeStyle,
   type Catalog,
   type Photo,
 } from "@/lib/catalog";
 import { formatGeo, formatPhotoDate, roadtripGeoPhotos, roadtripMapFocus, roadtripPhotos } from "@/lib/roadtrip";
 import { OsmMap } from "./osm-map";
+import { Lightbox } from "./lightbox";
 import { SaveGuard } from "./protect-images";
 
 type RoadtripAppProps = {
@@ -30,17 +32,27 @@ export function RoadtripApp({ catalog, resolveUrl, className }: RoadtripAppProps
   );
   const [index, setIndex] = useState(0);
   const [tray, setTray] = useState(false);
+  const [lightbox, setLightbox] = useState(false);
+  const [playing, setPlaying] = useState(false);
+  const [wantFullscreen, setWantFullscreen] = useState(false);
   const fitPoints = useMemo(
     () => roadtripMapFocus(photos, index).map((photo) => ({ lat: photo.geo.lat, lng: photo.geo.lng })),
     [photos, index],
   );
   const stageRef = useRef<HTMLDivElement>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
   const cardsRef = useRef<(HTMLButtonElement | null)[]>([]);
   const programmatic = useRef(false);
   const indexRef = useRef(index);
   indexRef.current = index;
   const layout = catalog.site.layout ?? DEFAULT_LAYOUT;
-  const showMap = geoPhotos.length > 0;
+  const allowLightbox = layout.lightbox ?? DEFAULT_LAYOUT.lightbox;
+  const allowSlideshow = layout.slideshow ?? DEFAULT_LAYOUT.slideshow;
+  const allowFullscreen = layout.fullscreen ?? DEFAULT_LAYOUT.fullscreen;
+  const allowMap = layout.map ?? DEFAULT_LAYOUT.map;
+  const allowOverview = layout.overview ?? DEFAULT_LAYOUT.overview;
+  const intervalMs = clampSlideshowInterval(layout.slideshowInterval ?? DEFAULT_LAYOUT.slideshowInterval) * 1000;
+  const showMap = allowMap && geoPhotos.length > 0;
   const current = photos[index];
 
   const scrollToIndex = useCallback((next: number, behavior: ScrollBehavior) => {
@@ -130,12 +142,31 @@ export function RoadtripApp({ catalog, resolveUrl, className }: RoadtripAppProps
   }, [photos.length]);
 
   const openPhoto = useCallback(
-    (next: number) => {
+    (next: number, showDetail = false) => {
       go(next);
       setTray(false);
+      if (showDetail && allowLightbox) setLightbox(true);
     },
-    [go],
+    [go, allowLightbox],
   );
+
+  useEffect(() => {
+    if (!playing || lightbox || photos.length < 2) return;
+    const timer = window.setInterval(() => {
+      go((indexRef.current + 1) % photos.length);
+    }, intervalMs);
+    return () => window.clearInterval(timer);
+  }, [playing, lightbox, photos.length, intervalMs, go]);
+
+  useEffect(() => {
+    if (!wantFullscreen || lightbox) return;
+    const el = rootRef.current;
+    if (!el) return;
+    const node = el as HTMLElement & { webkitRequestFullscreen?: () => void };
+    if (el.requestFullscreen) void el.requestFullscreen();
+    else node.webkitRequestFullscreen?.();
+    setWantFullscreen(false);
+  }, [wantFullscreen, lightbox]);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -150,7 +181,7 @@ export function RoadtripApp({ catalog, resolveUrl, className }: RoadtripAppProps
         }
         return;
       }
-      if (tray) return;
+      if (tray || lightbox) return;
       if (event.key === "ArrowRight" || event.key === "ArrowDown") {
         event.preventDefault();
         go(indexRef.current + 1);
@@ -167,7 +198,7 @@ export function RoadtripApp({ catalog, resolveUrl, className }: RoadtripAppProps
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [go, photos.length, tray]);
+  }, [go, photos.length, tray, lightbox]);
 
   const traveledIds = useMemo(() => {
     const ids = new Set<string>();
@@ -190,6 +221,7 @@ export function RoadtripApp({ catalog, resolveUrl, className }: RoadtripAppProps
   return (
     <SaveGuard className={className}>
       <div
+        ref={rootRef}
         className={["theme-gallery-v1", "theme-roadtrip", showMap ? "has-map" : ""].filter(Boolean).join(" ")}
         style={galleryThemeStyle(layout.background) as React.CSSProperties}
       >
@@ -201,7 +233,62 @@ export function RoadtripApp({ catalog, resolveUrl, className }: RoadtripAppProps
                 {index + 1} / {photos.length}
               </span>
             ) : null}
-            {photos.length > 0 ? (
+            {photos.length > 0 && allowSlideshow ? (
+              <button
+                type="button"
+                className="rt-tool"
+                onClick={() => {
+                  setPlaying((value) => !value);
+                  if (allowLightbox) setLightbox(true);
+                }}
+                title={playing ? "Diashow anhalten" : "Diashow starten"}
+                aria-label={playing ? "Diashow anhalten" : "Diashow starten"}
+                aria-pressed={playing}
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  {playing ? (
+                    <path d="M7 6h3v12H7zM14 6h3v12h-3z" fill="currentColor" />
+                  ) : (
+                    <path
+                      d="M8 6.2v11.6L18.5 12z"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  )}
+                </svg>
+              </button>
+            ) : null}
+            {photos.length > 0 && allowFullscreen ? (
+              <button
+                type="button"
+                className="rt-tool"
+                onClick={() => {
+                  if (allowLightbox) {
+                    setLightbox(true);
+                    setWantFullscreen(true);
+                  } else {
+                    setWantFullscreen(true);
+                  }
+                }}
+                title="Vollbild"
+                aria-label="Vollbild"
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path
+                    d="M8 5H5v4M16 5h3v4M8 19H5v-4M16 19h3v-4"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </button>
+            ) : null}
+            {photos.length > 0 && allowOverview ? (
               <button
                 type="button"
                 className="rt-tool"
@@ -249,6 +336,7 @@ export function RoadtripApp({ catalog, resolveUrl, className }: RoadtripAppProps
                     }
                     onClick={() => {
                       if (!active) go(i);
+                      else if (allowLightbox) setLightbox(true);
                     }}
                     aria-current={active ? "true" : undefined}
                     aria-label={photoLabel(photo)}
@@ -321,7 +409,7 @@ export function RoadtripApp({ catalog, resolveUrl, className }: RoadtripAppProps
           </div>
         </footer>
 
-        {tray ? (
+        {tray && allowOverview ? (
           <div className="rt-tray" role="dialog" aria-label="Lichtkasten">
             <div className="rt-tray-bar">
               <span>Lichtkasten</span>
@@ -355,6 +443,24 @@ export function RoadtripApp({ catalog, resolveUrl, className }: RoadtripAppProps
               ))}
             </div>
           </div>
+        ) : null}
+
+        {lightbox && allowLightbox && photos.length ? (
+          <Lightbox
+            photos={photos}
+            index={index}
+            resolveUrl={(photo) => resolveUrl(photo, "display")}
+            onClose={() => {
+              setLightbox(false);
+              setPlaying(false);
+              setWantFullscreen(false);
+            }}
+            onIndex={(next) => go(next)}
+            playing={playing}
+            onPlaying={setPlaying}
+            intervalMs={intervalMs}
+            enterFullscreen={wantFullscreen}
+          />
         ) : null}
       </div>
     </SaveGuard>

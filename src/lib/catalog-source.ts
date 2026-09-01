@@ -40,17 +40,14 @@ async function loadCatalogFromJson(prefix: string): Promise<Catalog> {
 
 export type GalleryMode = "gallery" | "roadtrip";
 
-export function catalogBootstrapScript(
-  catalog: Pick<Catalog, "tags" | "photos" | "site" | "texts">,
-  mode: GalleryMode = "gallery",
-): string {
+export function catalogBootstrapScript(catalog: Pick<Catalog, "tags" | "photos" | "site" | "texts">): string {
   const json = JSON.stringify({
     tags: catalog.tags,
     photos: catalog.photos,
     site: catalog.site,
     texts: catalog.texts,
   }).replace(/</g, "\\u003c");
-  const modeBit = mode === "roadtrip" ? `window.__C2_MODE__="roadtrip";` : "";
+  const modeBit = catalog.site.layout?.view === "roadtrip" ? `window.__C2_MODE__="roadtrip";` : "";
   return `${modeBit}window.__C2_CATALOG__=${json};`;
 }
 

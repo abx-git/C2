@@ -70,7 +70,7 @@ export function DeployButton() {
   const syncReady = Boolean(sync?.configured && sync.deployExists && sync.reachable !== false);
   const syncBad = syncView?.tone === "err";
 
-  const runDeploy = async (mode: "gallery" | "roadtrip") => {
+  const runDeploy = async () => {
     setOpen(false);
     setProgress(null);
     const dest = await pickDirectory("readwrite");
@@ -89,21 +89,19 @@ export function DeployButton() {
         workspace,
         originBase: appBase(),
         password: useEditorStore.getState().galleryPassword,
-        mode,
         onProgress: setProgress,
       });
       const appNote = result.copiedApp
-        ? mode === "roadtrip"
-          ? "Roadtrip-Ordner geschrieben."
-          : "Deploy-Ordner geschrieben."
+        ? "Deploy-Ordner geschrieben."
         : "Nur JSON und Bilder geschrieben. Einmal „npm run build:static“, dann erneut deployen.";
       const extra = [
+        result.mode === "roadtrip" ? "Roadtrip" : "Galerie",
         `${result.photoCount} Bild${result.photoCount === 1 ? "" : "er"}`,
-        result.geoCount && mode === "roadtrip" ? `${result.geoCount} GPS-Punkte` : null,
+        result.geoCount ? `${result.geoCount} GPS-Punkte` : null,
         result.watermarked ? "Wasserzeichen" : null,
         result.encrypted ? "verschlüsselt" : null,
         result.skipped ? `${result.skipped} unverändert` : null,
-        mode === "gallery" && syncReady ? "Danach „Zum Server“." : null,
+        syncReady ? "Danach „Zum Server“." : null,
       ]
         .filter(Boolean)
         .join(" · ");
@@ -161,11 +159,8 @@ export function DeployButton() {
             Trennen
           </button>
           <div className="edit-menu-sep" />
-          <button type="button" role="menuitem" disabled={busy} onClick={() => void runDeploy("gallery")}>
+          <button type="button" role="menuitem" disabled={busy} onClick={() => void runDeploy()}>
             Deploy-Ordner
-          </button>
-          <button type="button" role="menuitem" disabled={busy} onClick={() => void runDeploy("roadtrip")}>
-            Roadtrip-Ordner
           </button>
           <button type="button" role="menuitem" disabled={busy} onClick={() => void runServer()}>
             Zum Server

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { emptyCatalog, galleryThemeStyle, toPublicCatalog, type Catalog } from "@/lib/catalog";
+import { catalogViewMode, emptyCatalog, galleryThemeStyle, toPublicCatalog, type Catalog } from "@/lib/catalog";
 import { createHttpCatalogSource, deployPageBase, readGalleryMode } from "@/lib/catalog-source";
 import { GalleryApp } from "@/components/gallery/gallery-app";
 import { RoadtripApp } from "@/components/gallery/roadtrip-app";
@@ -49,7 +49,8 @@ function LoadedGallery({ catalog, error }: { catalog: Catalog; error: string | n
   const crypto = catalog.site.protection?.crypto;
   const { key, locked, checking, error: unlockError, busy, unlock } = useGalleryUnlock(crypto);
   const resolveUrl = useDecryptedUrls(catalog, crypto ? key : null, deployPageBase());
-  const mode = readGalleryMode();
+  const view =
+    catalogViewMode(catalog) === "roadtrip" || readGalleryMode() === "roadtrip" ? "roadtrip" : "gallery";
 
   if (checking) {
     return (
@@ -95,7 +96,7 @@ function LoadedGallery({ catalog, error }: { catalog: Catalog; error: string | n
   }
 
   return (
-    mode === "roadtrip" ? (
+    view === "roadtrip" ? (
       <RoadtripApp className="h-full" catalog={catalog} resolveUrl={resolveUrl} />
     ) : (
       <GalleryApp className="h-full" catalog={catalog} resolveUrl={resolveUrl} />

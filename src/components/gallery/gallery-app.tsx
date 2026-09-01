@@ -220,6 +220,9 @@ export function GalleryApp({ catalog, resolveUrl, className }: GalleryAppProps) 
   const intervalMs = clampSlideshowInterval(layout.slideshowInterval ?? DEFAULT_LAYOUT.slideshowInterval) * 1000;
   const fadeIn = layout.fadeIn ?? DEFAULT_LAYOUT.fadeIn;
   const fadeDuration = clampFadeInDuration(layout.fadeInDuration ?? DEFAULT_LAYOUT.fadeInDuration);
+  const allowLightbox = layout.lightbox ?? DEFAULT_LAYOUT.lightbox;
+  const allowSlideshow = layout.slideshow ?? DEFAULT_LAYOUT.slideshow;
+  const allowFullscreen = layout.fullscreen ?? DEFAULT_LAYOUT.fullscreen;
 
   return (
     <SaveGuard className={className}>
@@ -271,8 +274,9 @@ export function GalleryApp({ catalog, resolveUrl, className }: GalleryAppProps) 
       </div>
       <div className="g-essay-head">
         {heading ? <h1 className="g-essay-title">{heading}</h1> : <div className="g-essay-title" aria-hidden="true" />}
-        {gallery && photos.length > 0 ? (
+        {gallery && photos.length > 0 && (allowSlideshow || allowFullscreen) ? (
           <div className="g-essay-actions">
+          {allowSlideshow ? (
           <button
             type="button"
             className="g-slideshow"
@@ -291,6 +295,8 @@ export function GalleryApp({ catalog, resolveUrl, className }: GalleryAppProps) 
               />
             </svg>
           </button>
+          ) : null}
+          {allowFullscreen ? (
           <button
             type="button"
             className="g-slideshow"
@@ -309,6 +315,7 @@ export function GalleryApp({ catalog, resolveUrl, className }: GalleryAppProps) 
               />
             </svg>
           </button>
+          ) : null}
           </div>
         ) : null}
       </div>
@@ -359,7 +366,7 @@ export function GalleryApp({ catalog, resolveUrl, className }: GalleryAppProps) 
                         }}
                         onClick={(event) => {
                           event.currentTarget.blur();
-                          openPhoto(photo);
+                          if (allowLightbox) openPhoto(photo);
                         }}
                         aria-label={caption ? `${label}. ${caption}` : label}
                       >
@@ -376,7 +383,7 @@ export function GalleryApp({ catalog, resolveUrl, className }: GalleryAppProps) 
         </div>
       </main>
 
-      {lightbox != null && gallery ? (
+      {lightbox != null && gallery && (allowLightbox || allowSlideshow || allowFullscreen) ? (
         <Lightbox
           photos={photos}
           index={lightbox}

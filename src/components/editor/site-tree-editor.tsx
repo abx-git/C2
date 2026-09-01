@@ -107,25 +107,123 @@ function LayoutFields({
 
   return (
     <section className="mb-6 rounded-xl border border-[var(--edit-line)] bg-[var(--edit-panel)] p-4">
+      <h3 className="mb-1 text-sm font-medium">Anzeige</h3>
+      <p className="mb-3 text-xs text-[var(--edit-muted)]">
+        Ein Deploy, diese Schalter gelten für Vorschau und öffentliche Seite.
+      </p>
+      <div className="mb-4 text-xs text-[var(--edit-muted)]">
+        Bilder zeigen als
+        <div className="mt-1.5 flex flex-wrap gap-2">
+          {(
+            [
+              ["gallery", "Galerie"],
+              ["roadtrip", "Roadtrip"],
+            ] as const
+          ).map(([id, label]) => {
+            const selected = layout.view === id;
+            return (
+              <button
+                key={id}
+                type="button"
+                aria-pressed={selected}
+                className={`rounded-full border px-3 py-1 ${
+                  selected ? "border-[var(--edit-ink)] text-[var(--edit-ink)]" : "border-[var(--edit-line)]"
+                }`}
+                onClick={() => set({ view: id })}
+              >
+                {label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+      <div className="mb-4 flex flex-wrap gap-4 text-xs">
+        <label className="inline-flex items-center gap-2 text-[var(--edit-ink)]">
+          <input
+            type="checkbox"
+            checked={layout.lightbox}
+            onChange={(event) => set({ lightbox: event.target.checked })}
+          />
+          Detailansicht
+        </label>
+        <label className="inline-flex items-center gap-2 text-[var(--edit-ink)]">
+          <input
+            type="checkbox"
+            checked={layout.slideshow}
+            onChange={(event) => set({ slideshow: event.target.checked })}
+          />
+          Abspielen
+        </label>
+        <label className="inline-flex items-center gap-2 text-[var(--edit-ink)]">
+          <input
+            type="checkbox"
+            checked={layout.fullscreen}
+            onChange={(event) => set({ fullscreen: event.target.checked })}
+          />
+          Vollbild
+        </label>
+        {layout.view === "roadtrip" ? (
+          <>
+            <label className="inline-flex items-center gap-2 text-[var(--edit-ink)]">
+              <input type="checkbox" checked={layout.map} onChange={(event) => set({ map: event.target.checked })} />
+              Karte
+            </label>
+            <label className="inline-flex items-center gap-2 text-[var(--edit-ink)]">
+              <input
+                type="checkbox"
+                checked={layout.overview}
+                onChange={(event) => set({ overview: event.target.checked })}
+              />
+              Übersicht
+            </label>
+          </>
+        ) : null}
+      </div>
       <h3 className="mb-1 text-sm font-medium">Layout</h3>
       <p className="mb-3 text-xs text-[var(--edit-muted)]">
         Steuert die Bildstrecke. Änderungen erscheinen sofort in der Vorschau.
       </p>
       <div className="grid gap-3 sm:grid-cols-2">
-        <label className="block text-xs text-[var(--edit-muted)]">
-          Abstand (px)
-          <input
-            type="number"
-            min={0}
-            max={64}
-            className="edit-field mt-1"
-            value={layout.gap}
-            onChange={(event) => set({ gap: Number(event.target.value) || 0 })}
-          />
-        </label>
-        <div className="text-xs text-[var(--edit-muted)] sm:col-span-2">
-          <LayoutColumnsPicker value={layout.columns} onChange={(columns) => set({ columns })} />
-        </div>
+        {layout.view === "gallery" ? (
+          <>
+            <label className="block text-xs text-[var(--edit-muted)]">
+              Abstand (px)
+              <input
+                type="number"
+                min={0}
+                max={64}
+                className="edit-field mt-1"
+                value={layout.gap}
+                onChange={(event) => set({ gap: Number(event.target.value) || 0 })}
+              />
+            </label>
+            <div className="text-xs text-[var(--edit-muted)] sm:col-span-2">
+              <LayoutColumnsPicker value={layout.columns} onChange={(columns) => set({ columns })} />
+            </div>
+            <label className="block text-xs text-[var(--edit-muted)]">
+              Zeile min. (px)
+              <input
+                type="number"
+                min={80}
+                max={600}
+                className="edit-field mt-1"
+                value={layout.rowMinHeight}
+                onChange={(event) => set({ rowMinHeight: Number(event.target.value) || 80 })}
+              />
+            </label>
+            <label className="block text-xs text-[var(--edit-muted)]">
+              Zeile max. (px)
+              <input
+                type="number"
+                min={120}
+                max={900}
+                className="edit-field mt-1"
+                value={layout.rowMaxHeight}
+                onChange={(event) => set({ rowMaxHeight: Number(event.target.value) || 120 })}
+              />
+            </label>
+          </>
+        ) : null}
         <div className="text-xs text-[var(--edit-muted)] sm:col-span-2">
           Hintergrund
           <div className="mt-1.5 flex flex-wrap items-center gap-2">
@@ -153,41 +251,21 @@ function LayoutFields({
             })}
           </div>
         </div>
-        <label className="block text-xs text-[var(--edit-muted)]">
-          Zeile min. (px)
-          <input
-            type="number"
-            min={80}
-            max={600}
-            className="edit-field mt-1"
-            value={layout.rowMinHeight}
-            onChange={(event) => set({ rowMinHeight: Number(event.target.value) || 80 })}
-          />
-        </label>
-        <label className="block text-xs text-[var(--edit-muted)]">
-          Zeile max. (px)
-          <input
-            type="number"
-            min={120}
-            max={900}
-            className="edit-field mt-1"
-            value={layout.rowMaxHeight}
-            onChange={(event) => set({ rowMaxHeight: Number(event.target.value) || 120 })}
-          />
-        </label>
-        <label className="block text-xs text-[var(--edit-muted)]">
-          Diashow-Intervall (s)
-          <input
-            type="number"
-            min={SLIDESHOW_INTERVAL_MIN}
-            max={SLIDESHOW_INTERVAL_MAX}
-            className="edit-field mt-1"
-            value={layout.slideshowInterval ?? DEFAULT_LAYOUT.slideshowInterval}
-            onChange={(event) =>
-              set({ slideshowInterval: Number(event.target.value) || DEFAULT_LAYOUT.slideshowInterval })
-            }
-          />
-        </label>
+        {layout.slideshow ? (
+          <label className="block text-xs text-[var(--edit-muted)]">
+            Diashow-Intervall (s)
+            <input
+              type="number"
+              min={SLIDESHOW_INTERVAL_MIN}
+              max={SLIDESHOW_INTERVAL_MAX}
+              className="edit-field mt-1"
+              value={layout.slideshowInterval ?? DEFAULT_LAYOUT.slideshowInterval}
+              onChange={(event) =>
+                set({ slideshowInterval: Number(event.target.value) || DEFAULT_LAYOUT.slideshowInterval })
+              }
+            />
+          </label>
+        ) : null}
         <label className="block text-xs text-[var(--edit-muted)]">
           Einblend-Dauer (s)
           <input

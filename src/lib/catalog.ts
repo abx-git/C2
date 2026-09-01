@@ -262,6 +262,8 @@ export const SLIDESHOW_INTERVAL_MAX = 30;
 export const FADE_IN_DURATION_MIN = 0.2;
 export const FADE_IN_DURATION_MAX = 2;
 
+export type ViewMode = "gallery" | "roadtrip";
+
 export type LayoutConfig = {
   /** Abstand zwischen Bildern, Pixel */
   gap: number;
@@ -281,6 +283,18 @@ export type LayoutConfig = {
   fadeIn: boolean;
   /** Einblend-Dauer in Sekunden */
   fadeInDuration: number;
+  /** Öffentliche Ansicht: Raster oder Bildstrom */
+  view: ViewMode;
+  /** Klick öffnet die große Detailansicht */
+  lightbox: boolean;
+  /** Play-Button / Diashow */
+  slideshow: boolean;
+  /** Vollbild-Button */
+  fullscreen: boolean;
+  /** OpenStreetMap im Bildstrom, wenn GPS vorhanden */
+  map: boolean;
+  /** Lichtkasten-Übersicht im Bildstrom */
+  overview: boolean;
 };
 
 export const DEFAULT_LAYOUT: LayoutConfig = {
@@ -293,7 +307,17 @@ export const DEFAULT_LAYOUT: LayoutConfig = {
   slideshowInterval: 5,
   fadeIn: true,
   fadeInDuration: 0.6,
+  view: "gallery",
+  lightbox: true,
+  slideshow: true,
+  fullscreen: true,
+  map: true,
+  overview: true,
 };
+
+export function catalogViewMode(catalog: Catalog): ViewMode {
+  return catalog.site.layout.view === "roadtrip" ? "roadtrip" : "gallery";
+}
 
 export function clampSlideshowInterval(value: number): number {
   return Math.min(SLIDESHOW_INTERVAL_MAX, Math.max(SLIDESHOW_INTERVAL_MIN, Math.round(value)));
@@ -528,6 +552,15 @@ export function parseLayout(raw: unknown): LayoutConfig {
   if (typeof raw.fadeInDuration === "number" && Number.isFinite(raw.fadeInDuration)) {
     base.fadeInDuration = clampFadeInDuration(raw.fadeInDuration);
   }
+  if (raw.view === "roadtrip" || raw.view === "gallery") base.view = raw.view;
+  if (typeof raw.lightbox === "boolean") base.lightbox = raw.lightbox;
+  else if (base.view === "roadtrip") base.lightbox = false;
+  if (typeof raw.slideshow === "boolean") base.slideshow = raw.slideshow;
+  else if (base.view === "roadtrip") base.slideshow = false;
+  if (typeof raw.fullscreen === "boolean") base.fullscreen = raw.fullscreen;
+  else if (base.view === "roadtrip") base.fullscreen = false;
+  if (typeof raw.map === "boolean") base.map = raw.map;
+  if (typeof raw.overview === "boolean") base.overview = raw.overview;
   return base;
 }
 

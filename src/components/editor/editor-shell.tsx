@@ -1,9 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { BRAVE_FS_HELP, isBrave } from "@/lib/browser";
-import { toPublicCatalog, type Photo } from "@/lib/catalog";
+import { toPublicCatalog, catalogViewMode, type Photo } from "@/lib/catalog";
 import { supportsDirectoryPicker } from "@/lib/workspace";
 import { useEditorStore, type EditorTab } from "@/store/editor-store";
 import { GalleryApp } from "@/components/gallery/gallery-app";
@@ -38,10 +38,10 @@ export function EditorShell() {
   const message = useEditorStore((s) => s.message);
   const error = useEditorStore((s) => s.error);
   const catalog = useEditorStore((s) => s.catalog);
+  const publicCatalog = useMemo(() => toPublicCatalog(catalog), [catalog]);
   const previewPhotoId = useEditorStore((s) => s.previewPhotoId);
   const thumbUrls = useEditorStore((s) => s.thumbUrls);
   const displayUrls = useEditorStore((s) => s.displayUrls);
-  const [previewKind, setPreviewKind] = useState<"gallery" | "roadtrip">("gallery");
 
   useEffect(() => {
     void restoreWorkspace();
@@ -57,9 +57,9 @@ export function EditorShell() {
 
   useEffect(() => {
     if (activeTab !== "preview" || status !== "ready") return;
-    const ids = toPublicCatalog(useEditorStore.getState().catalog).photos.photos.map((photo) => photo.id);
+    const ids = publicCatalog.photos.photos.map((photo) => photo.id);
     void useEditorStore.getState().ensureDisplayUrls(ids);
-  }, [activeTab, status]);
+  }, [activeTab, status, publicCatalog.photos.photos]);
 
   const resolveUrl = (photo: Photo, kind: "thumb" | "display") => {
     if (kind === "thumb") return thumbUrls[photo.id] ?? "";
@@ -145,27 +145,11 @@ export function EditorShell() {
           </div>
         ) : (
           <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-[var(--edit-line)]">
-            <div className="flex shrink-0 gap-1 border-b border-[var(--edit-line)] bg-[var(--edit-panel)] px-3 py-1.5">
-              <button
-                type="button"
-                className={`edit-tab ${previewKind === "gallery" ? "is-active" : ""}`}
-                onClick={() => setPreviewKind("gallery")}
-              >
-                Galerie
-              </button>
-              <button
-                type="button"
-                className={`edit-tab ${previewKind === "roadtrip" ? "is-active" : ""}`}
-                onClick={() => setPreviewKind("roadtrip")}
-              >
-                Roadtrip
-              </button>
-            </div>
             <div className="min-h-0 flex-1 overflow-hidden">
-              {previewKind === "roadtrip" ? (
-                <RoadtripApp className="h-full" catalog={toPublicCatalog(catalog)} resolveUrl={resolveUrl} />
+              {catalogViewMode(publicCatalog) === "roadtrip" ? (
+                <RoadtripApp className="h-full" catalog={publicCatalog} resolveUrl={resolveUrl} />
               ) : (
-                <GalleryApp className="h-full" catalog={toPublicCatalog(catalog)} resolveUrl={resolveUrl} />
+                <GalleryApp className="h-full" catalog={publicCatalog} resolveUrl={resolveUrl} />
               )}
             </div>
           </div>

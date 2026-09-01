@@ -151,7 +151,6 @@ export async function writeDeployFolder(opts: {
   appFolder?: FileSystemDirectoryHandle | null;
   originBase?: string;
   password?: string;
-  mode?: "gallery" | "roadtrip";
   onProgress?: (progress: DeployProgress) => void;
 }): Promise<DeployResult> {
   let copiedApp = false;
@@ -198,7 +197,7 @@ export async function writeDeployFolder(opts: {
     writeJsonFile(opts.dest, "data/site.json", publicSite),
     writeJsonFile(opts.dest, "data/texts.json", published.texts),
   ]);
-  const bootstrap = catalogBootstrapScript(published, opts.mode === "roadtrip" ? "roadtrip" : "gallery");
+  const bootstrap = catalogBootstrapScript(published);
   await writeTextFile(opts.dest, "data/catalog.js", `${bootstrap}\n`);
   const indexHtml = await readTextFile(opts.dest, "index.html");
   if (indexHtml) {
@@ -265,7 +264,7 @@ export async function writeDeployFolder(opts: {
     appSource,
     encrypted,
     watermarked: Boolean(mark),
-    mode: opts.mode === "roadtrip" ? "roadtrip" : "gallery",
+    mode: publicSite.layout?.view === "roadtrip" ? "roadtrip" : "gallery",
     geoCount: photos.filter((photo) => photo.geo).length,
   };
 }
