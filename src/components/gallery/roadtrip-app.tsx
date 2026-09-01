@@ -313,8 +313,10 @@ export function RoadtripApp({ catalog, resolveUrl, className }: RoadtripAppProps
                   aria-label={photoLabel(photo)}
                   aria-current={i === index ? "true" : undefined}
                 >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={resolveUrl(photo, "thumb")} alt="" draggable={false} />
+                  <span className="rt-tray-frame">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={resolveUrl(photo, "thumb")} alt="" draggable={false} />
+                  </span>
                 </button>
               ))}
             </div>

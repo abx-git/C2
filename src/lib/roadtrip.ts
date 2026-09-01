@@ -1,21 +1,8 @@
-import { photoHasGeo, type Catalog, type Photo, type PhotoGeo } from "./catalog";
+import { catalogFeed, photoHasGeo, type Catalog, type Photo, type PhotoGeo } from "./catalog";
 
-function takenAtValue(iso: string | null): number {
-  if (!iso) return Number.POSITIVE_INFINITY;
-  const time = Date.parse(iso);
-  return Number.isFinite(time) ? time : Number.POSITIVE_INFINITY;
-}
-
-/** Veröffentlichte Bilder in Reise-Reihenfolge (Aufnahmezeit, sonst Katalog). */
+/** Veröffentlichte Bilder in der Reihenfolge der Edit-Bibliothek. */
 export function roadtripPhotos(catalog: Catalog): Photo[] {
-  return catalog.photos.photos
-    .map((photo, index) => ({ photo, index }))
-    .sort((a, b) => {
-      const delta = takenAtValue(a.photo.takenAt) - takenAtValue(b.photo.takenAt);
-      if (delta !== 0) return delta;
-      return a.index - b.index;
-    })
-    .map((item) => item.photo);
+  return catalogFeed(catalog).flatMap((item) => (item.type === "photo" ? [item.photo] : []));
 }
 
 export function roadtripGeoPhotos(photos: Photo[]): Array<Photo & { geo: PhotoGeo }> {
