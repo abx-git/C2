@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { isPublishTag, PHOTO_RATING_MAX, type Tag } from "@/lib/catalog";
+import { formatGeo } from "@/lib/roadtrip";
 import { useEditorStore } from "@/store/editor-store";
 
 export function confirmRemoveSelection(photoCount: number, textCount: number): boolean {
@@ -228,6 +229,7 @@ export function MetadataPanel() {
             Datei: {photo.originalName}
             {photo.exif?.camera ? ` · ${photo.exif.camera}` : ""}
             {photo.exif?.focalLength ? ` · ${photo.exif.focalLength}` : ""}
+            {photo.geo ? ` · ${formatGeo(photo.geo)}` : ""}
             {` · ${photo.width}×${photo.height}`}
           </p>
           <button

@@ -23,7 +23,7 @@ export function SaveGuard({ children, className }: { children: ReactNode; classN
       className={`g-save-guard ${className ?? ""}`.trim()}
       onContextMenu={(event) => {
         const target = event.target as HTMLElement | null;
-        if (!target?.closest("img, .g-shot, .g-work-tile, .g-lightbox-stage")) return;
+        if (!target?.closest("img, .g-shot, .g-work-tile, .g-lightbox-stage, .rt-card")) return;
         event.preventDefault();
         showHint();
       }}

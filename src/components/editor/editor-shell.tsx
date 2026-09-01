@@ -7,6 +7,7 @@ import { toPublicCatalog, type Photo } from "@/lib/catalog";
 import { supportsDirectoryPicker } from "@/lib/workspace";
 import { useEditorStore, type EditorTab } from "@/store/editor-store";
 import { GalleryApp } from "@/components/gallery/gallery-app";
+import { RoadtripApp } from "@/components/gallery/roadtrip-app";
 import { DeployButton } from "./deploy-button";
 import { MetadataPanel } from "./metadata-panel";
 import { PhotoLibrary } from "./photo-library";
@@ -41,6 +42,7 @@ export function EditorShell() {
   const previewPhotoId = useEditorStore((s) => s.previewPhotoId);
   const thumbUrls = useEditorStore((s) => s.thumbUrls);
   const displayUrls = useEditorStore((s) => s.displayUrls);
+  const [previewKind, setPreviewKind] = useState<"gallery" | "roadtrip">("gallery");
 
   useEffect(() => {
     void restoreWorkspace();
@@ -162,8 +164,30 @@ export function EditorShell() {
             <SiteTreeEditor />
           </div>
         ) : (
-          <div className="min-h-0 flex-1 overflow-hidden rounded-xl border border-[var(--edit-line)]">
-            <GalleryApp className="h-full" catalog={toPublicCatalog(catalog)} resolveUrl={resolveUrl} />
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-[var(--edit-line)]">
+            <div className="flex shrink-0 gap-1 border-b border-[var(--edit-line)] bg-[var(--edit-panel)] px-3 py-2">
+              <button
+                type="button"
+                className={`edit-btn ${previewKind === "gallery" ? "edit-btn-primary" : ""}`}
+                onClick={() => setPreviewKind("gallery")}
+              >
+                Galerie
+              </button>
+              <button
+                type="button"
+                className={`edit-btn ${previewKind === "roadtrip" ? "edit-btn-primary" : ""}`}
+                onClick={() => setPreviewKind("roadtrip")}
+              >
+                Roadtrip
+              </button>
+            </div>
+            <div className="min-h-0 flex-1 overflow-hidden">
+              {previewKind === "roadtrip" ? (
+                <RoadtripApp className="h-full" catalog={toPublicCatalog(catalog)} resolveUrl={resolveUrl} />
+              ) : (
+                <GalleryApp className="h-full" catalog={toPublicCatalog(catalog)} resolveUrl={resolveUrl} />
+              )}
+            </div>
           </div>
         )}
       </main>

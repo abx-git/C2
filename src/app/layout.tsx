@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { ClearStaleWorkers } from "@/components/clear-stale-workers";
 import "./globals.css";
 import "../themes/gallery-v1.css";
+import "../themes/roadtrip.css";
 
 export const metadata: Metadata = {
   title: "Andreas Bergmann Pictures",

@@ -24,6 +24,7 @@ import {
   type Catalog,
   type FeedRef,
   type Photo,
+  type PhotoGeo,
   type SiteFile,
   type SitePage,
   type Tag,
@@ -320,6 +321,42 @@ async function presentWorkspace(
     displayUrls: {},
   });
   void fillThumbUrls(handle, catalog.photos.photos, loadId, set, get);
+  void backfillPhotoGeo(handle, catalog.photos.photos, loadId, set, get);
+}
+
+async function backfillPhotoGeo(
+  handle: FileSystemDirectoryHandle,
+  photos: Photo[],
+  loadId: number,
+  set: EditorSet,
+  get: EditorGet,
+): Promise<void> {
+  const missing = photos.filter((photo) => !photo.geo && photo.files.original);
+  if (!missing.length) return;
+  let originalsDir: FileSystemDirectoryHandle | null = null;
+  try {
+    originalsDir = await getDirectoryAtPath(handle, "originals");
+  } catch {
+    originalsDir = null;
+  }
+  const found = new Map<string, PhotoGeo>();
+  await runPool(missing, 4, async (photo) => {
+    if (loadId !== workspaceLoadId || workspaceHandle !== handle) return;
+    const file = await readNamedFile(originalsDir, photo.files.original ?? "", handle);
+    if (!file) return;
+    const exif = await readFileExif(file);
+    if (exif?.geo) found.set(photo.id, exif.geo);
+  });
+  if (!found.size || loadId !== workspaceLoadId || workspaceHandle !== handle) return;
+  const state = get();
+  const nextPhotos = state.catalog.photos.photos.map((photo) => {
+    const geo = found.get(photo.id);
+    return geo && !photo.geo ? { ...photo, geo } : photo;
+  });
+  set({
+    catalog: { ...state.catalog, photos: { version: 1, photos: nextPhotos } },
+    dirty: true,
+  });
 }
 
 async function addPreviewUrl(
@@ -541,6 +578,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
           width: prepared.width,
           height: prepared.height,
           exif: exif?.camera || exif?.focalLength ? { camera: exif.camera, focalLength: exif.focalLength } : undefined,
+          ...(exif?.geo ? { geo: exif.geo } : {}),
         };
         const urls = await addPreviewUrl(handle, photo);
         imported[index] = { photo, thumb: urls.thumb, display: urls.display };

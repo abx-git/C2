@@ -57,6 +57,25 @@ export type PhotoExif = {
   focalLength?: string;
 };
 
+export type PhotoGeo = {
+  lat: number;
+  lng: number;
+};
+
+export function parsePhotoGeo(raw: unknown): PhotoGeo | undefined {
+  if (!isRecord(raw)) return undefined;
+  const lat = typeof raw.lat === "number" ? raw.lat : Number(raw.lat);
+  const lng = typeof raw.lng === "number" ? raw.lng : Number(raw.lng);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return undefined;
+  if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return undefined;
+  if (lat === 0 && lng === 0) return undefined;
+  return { lat: Math.round(lat * 1e6) / 1e6, lng: Math.round(lng * 1e6) / 1e6 };
+}
+
+export function photoHasGeo(photo: Pick<Photo, "geo">): photo is Photo & { geo: PhotoGeo } {
+  return Boolean(photo.geo);
+}
+
 export type PhotoFiles = {
   original?: string;
   display: string;
@@ -84,6 +103,7 @@ export type Photo = {
   width: number;
   height: number;
   exif?: PhotoExif;
+  geo?: PhotoGeo;
 };
 
 export type PhotosFile = {
@@ -391,6 +411,7 @@ export function parsePhotos(raw: unknown): PhotosFile {
           focalLength: typeof item.exif.focalLength === "string" ? item.exif.focalLength : undefined,
         }
       : undefined;
+    const geo = parsePhotoGeo(item.geo);
     photos.push({
       id,
       originalName: typeof item.originalName === "string" ? item.originalName : id,
@@ -403,6 +424,7 @@ export function parsePhotos(raw: unknown): PhotosFile {
       width: typeof item.width === "number" ? item.width : 1,
       height: typeof item.height === "number" ? item.height : 1,
       exif,
+      ...(geo ? { geo } : {}),
     });
   }
   return { version: 1, photos };

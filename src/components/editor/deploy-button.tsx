@@ -40,60 +40,81 @@ export function DeployButton() {
   const syncView = sync === undefined ? null : describeSync(sync);
   const syncReady = Boolean(sync?.configured && sync.deployExists && sync.reachable !== false);
 
+  const runDeploy = async (mode: "gallery" | "roadtrip") => {
+    setInfo(null);
+    setProgress(null);
+    const dest = await pickDirectory("readwrite");
+    if (!dest) return;
+    const workspace = getWorkspaceHandle();
+    if (!workspace) {
+      setInfo("Kein Workspace verbunden.");
+      return;
+    }
+    setBusy(true);
+    try {
+      await saveCatalog();
+      const originBase = appBase();
+      const result = await writeDeployFolder({
+        dest,
+        catalog,
+        workspace,
+        originBase,
+        password: useEditorStore.getState().galleryPassword,
+        mode,
+        onProgress: setProgress,
+      });
+      const appNote = result.copiedApp
+        ? mode === "roadtrip"
+          ? "Roadtrip-Ordner: Bildstrom per Pfeiltasten, OpenStreetMap wenn GPS vorhanden."
+          : "Eigenständiger Ordner: index.html im Finder öffnen, JSON und veröffentlichte Bilder."
+        : "Nur JSON und Bilder geschrieben. Einmal „npm run build:static“ ausführen, dann erneut deployen — erst dann ist der Ordner allein auslieferbar.";
+      const protectNote = [
+        result.watermarked ? "Wasserzeichen gesetzt." : null,
+        result.encrypted ? "Bilder verschlüsselt." : null,
+      ]
+        .filter(Boolean)
+        .join(" ");
+      const skipNote = result.skipped ? ` ${result.skipped} unverändert übersprungen.` : "";
+      const mapNote =
+        mode === "roadtrip"
+          ? result.geoCount
+            ? ` Karte mit ${result.geoCount} GPS-Punkt${result.geoCount === 1 ? "" : "en"}.`
+            : " Keine GPS-Daten in den Bildern — Karte bleibt ausgeblendet."
+          : "";
+      setInfo(
+        `${appNote} ${result.photoCount} Bild${result.photoCount === 1 ? "" : "er"}.${mapNote}${protectNote ? ` ${protectNote}` : ""}${skipNote}${
+          mode === "gallery" && syncReady
+            ? " Danach „Zum Server“."
+            : mode === "gallery"
+              ? " Server-Sync ist noch nicht bereit — Setup prüfen."
+              : ""
+        }`,
+      );
+    } catch (err) {
+      setInfo(err instanceof Error ? err.message : "Deploy fehlgeschlagen");
+    } finally {
+      setBusy(false);
+      setProgress(null);
+    }
+  };
+
   return (
     <div className="flex flex-wrap items-center gap-2">
       <button
         type="button"
         className="edit-btn-primary edit-btn"
         disabled={busy}
-        onClick={async () => {
-          setInfo(null);
-          setProgress(null);
-          const dest = await pickDirectory("readwrite");
-          if (!dest) return;
-          const workspace = getWorkspaceHandle();
-          if (!workspace) {
-            setInfo("Kein Workspace verbunden.");
-            return;
-          }
-          setBusy(true);
-          try {
-            await saveCatalog();
-            const originBase = appBase();
-            const result = await writeDeployFolder({
-              dest,
-              catalog,
-              workspace,
-              originBase,
-              password: useEditorStore.getState().galleryPassword,
-              onProgress: setProgress,
-            });
-            const appNote = result.copiedApp
-              ? "Eigenständiger Ordner: index.html im Finder öffnen, JSON und veröffentlichte Bilder."
-              : "Nur JSON und Bilder geschrieben. Einmal „npm run build:static“ ausführen, dann erneut deployen — erst dann ist der Ordner allein auslieferbar.";
-            const protectNote = [
-              result.watermarked ? "Wasserzeichen gesetzt." : null,
-              result.encrypted ? "Bilder verschlüsselt." : null,
-            ]
-              .filter(Boolean)
-              .join(" ");
-            const skipNote = result.skipped
-              ? ` ${result.skipped} unverändert übersprungen.`
-              : "";
-            setInfo(
-              `${appNote} ${result.photoCount} Bild${result.photoCount === 1 ? "" : "er"}.${protectNote ? ` ${protectNote}` : ""}${skipNote}${
-                syncReady ? " Danach „Zum Server“." : " Server-Sync ist noch nicht bereit — Setup prüfen."
-              }`,
-            );
-          } catch (err) {
-            setInfo(err instanceof Error ? err.message : "Deploy fehlgeschlagen");
-          } finally {
-            setBusy(false);
-            setProgress(null);
-          }
-        }}
+        onClick={() => void runDeploy("gallery")}
       >
         {busy ? busyLabel : "Deploy-Ordner"}
+      </button>
+      <button
+        type="button"
+        className="edit-btn"
+        disabled={busy}
+        onClick={() => void runDeploy("roadtrip")}
+      >
+        {busy ? busyLabel : "Roadtrip-Ordner"}
       </button>
       <button
         type="button"

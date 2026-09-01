@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { emptyCatalog, galleryThemeStyle, toPublicCatalog, type Catalog } from "@/lib/catalog";
-import { createHttpCatalogSource } from "@/lib/catalog-source";
+import { createHttpCatalogSource, readGalleryMode } from "@/lib/catalog-source";
 import { GalleryApp } from "@/components/gallery/gallery-app";
+import { RoadtripApp } from "@/components/gallery/roadtrip-app";
 import { GalleryUnlock, useDecryptedUrls, useGalleryUnlock } from "@/components/gallery/protect-images";
 
 export function HttpGallery() {
@@ -48,6 +49,7 @@ function LoadedGallery({ catalog, error }: { catalog: Catalog; error: string | n
   const crypto = catalog.site.protection?.crypto;
   const { key, locked, checking, error: unlockError, busy, unlock } = useGalleryUnlock(crypto);
   const resolveUrl = useDecryptedUrls(catalog, crypto ? key : null);
+  const mode = readGalleryMode();
 
   if (checking) {
     return (
@@ -92,5 +94,11 @@ function LoadedGallery({ catalog, error }: { catalog: Catalog; error: string | n
     );
   }
 
-  return <GalleryApp className="h-full" catalog={catalog} resolveUrl={resolveUrl} />;
+  return (
+    mode === "roadtrip" ? (
+      <RoadtripApp className="h-full" catalog={catalog} resolveUrl={resolveUrl} />
+    ) : (
+      <GalleryApp className="h-full" catalog={catalog} resolveUrl={resolveUrl} />
+    )
+  );
 }

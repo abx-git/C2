@@ -43,14 +43,25 @@ async function loadCatalogFromJson(prefix: string): Promise<Catalog> {
   return parseCatalog(tags, photos, site, texts, filters);
 }
 
-export function catalogBootstrapScript(catalog: Pick<Catalog, "tags" | "photos" | "site" | "texts">): string {
+export type GalleryMode = "gallery" | "roadtrip";
+
+export function catalogBootstrapScript(
+  catalog: Pick<Catalog, "tags" | "photos" | "site" | "texts">,
+  mode: GalleryMode = "gallery",
+): string {
   const json = JSON.stringify({
     tags: catalog.tags,
     photos: catalog.photos,
     site: catalog.site,
     texts: catalog.texts,
   }).replace(/</g, "\\u003c");
-  return `window.__C2_CATALOG__=${json};`;
+  const modeBit = mode === "roadtrip" ? `window.__C2_MODE__="roadtrip";` : "";
+  return `${modeBit}window.__C2_CATALOG__=${json};`;
+}
+
+export function readGalleryMode(): GalleryMode {
+  if (typeof window === "undefined") return "gallery";
+  return (window as Window & { __C2_MODE__?: string }).__C2_MODE__ === "roadtrip" ? "roadtrip" : "gallery";
 }
 
 export function injectCatalogIntoHtml(html: string, bootstrap: string): string {
