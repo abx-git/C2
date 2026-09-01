@@ -1,9 +1,10 @@
 .theme-roadtrip {
   position: relative;
   --rt-map: min(22vmin, 12.5rem);
+  --rt-stage-h: 0px;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr) auto;
   height: 100%;
   min-height: 100%;
   max-height: 100%;
@@ -16,56 +17,44 @@
 .theme-roadtrip.has-map,
 .theme-gallery-v1.theme-roadtrip.has-map {
   grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr) auto;
 }
 
-.theme-roadtrip .rt-stream-wrap {
-  grid-area: 1 / 1;
-  min-width: 0;
-  min-height: 0;
-  position: relative;
-  display: flex;
-  align-items: stretch;
-}
-
-.theme-roadtrip .rt-head,
-.theme-roadtrip .rt-meta {
+.theme-roadtrip .rt-head {
   grid-area: 1 / 1;
   z-index: 4;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
-  pointer-events: none;
-}
-
-.theme-roadtrip .rt-head {
-  align-self: start;
-  padding: 1.15rem 1.35rem 2.8rem;
-  background: linear-gradient(180deg, var(--g-bg) 0%, color-mix(in srgb, var(--g-bg) 55%, transparent) 62%, transparent);
+  padding: 0.85rem 1.25rem;
+  background: var(--g-bg);
   font-size: 0.78rem;
   font-weight: 500;
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
+.theme-roadtrip .rt-stream-wrap {
+  grid-area: 2 / 1;
+  min-width: 0;
+  min-height: 0;
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  background: var(--g-bg);
+}
+
 .theme-roadtrip .rt-meta {
-  align-self: end;
-  padding: 2.8rem 1.35rem 1.15rem;
-  background: linear-gradient(0deg, var(--g-bg) 0%, color-mix(in srgb, var(--g-bg) 55%, transparent) 62%, transparent);
+  grid-area: 3 / 1;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem 1.25rem 1rem;
+  background: var(--g-bg);
   font-weight: 400;
-}
-
-.theme-roadtrip.has-map .rt-meta {
-  padding-right: calc(var(--rt-map) + 1.8rem);
-}
-
-.theme-roadtrip .rt-head > *,
-.theme-roadtrip .rt-meta > *,
-.theme-roadtrip .rt-head-tools,
-.theme-roadtrip .rt-tool,
-.theme-roadtrip .rt-nav-btn {
-  pointer-events: auto;
 }
 
 .theme-roadtrip .rt-title {
@@ -120,11 +109,12 @@
   overflow-x: auto;
   overflow-y: hidden;
   scroll-snap-type: x mandatory;
-  scroll-behavior: smooth;
-  padding: 0 4vw;
+  scroll-snap-stop: always;
+  padding-inline: 50%;
   scrollbar-width: none;
   outline: none;
   overscroll-behavior-x: contain;
+  overflow-anchor: none;
 }
 
 .theme-roadtrip .rt-stream::-webkit-scrollbar {
@@ -133,9 +123,11 @@
 
 .theme-roadtrip .rt-card {
   flex: 0 0 auto;
+  box-sizing: border-box;
   scroll-snap-align: center;
+  scroll-snap-stop: always;
   height: 100%;
-  max-width: min(92vw, 100%);
+  width: min(92%, calc(var(--rt-stage-h) * var(--rt-w) / var(--rt-h)));
   padding: 0;
   border: 0;
   background: transparent;
@@ -145,20 +137,18 @@
 .theme-roadtrip .rt-card img,
 .theme-roadtrip .rt-card-slot {
   display: block;
+  width: 100%;
   height: 100%;
-  width: auto;
-  max-width: min(92vw, 100%);
   object-fit: contain;
   pointer-events: none;
 }
 
 .theme-roadtrip .rt-card-slot {
-  width: 42vw;
   background: var(--g-line);
 }
 
 .theme-roadtrip .rt-map {
-  grid-area: 1 / 1;
+  grid-area: 2 / 1;
   justify-self: end;
   align-self: end;
   width: var(--rt-map);
@@ -446,34 +436,21 @@
   .theme-gallery-v1.theme-roadtrip.has-map {
     --rt-map: min(26vmin, 9.25rem);
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr) auto;
   }
 
   .theme-roadtrip .rt-map {
     margin: 0 0.7rem 0.7rem 0;
   }
 
-  .theme-roadtrip .rt-head {
-    padding: 0.9rem 0.95rem 2.2rem;
-  }
-
+  .theme-roadtrip .rt-head,
   .theme-roadtrip .rt-meta {
-    padding: 2.2rem 0.95rem 0.9rem;
+    padding-left: 0.95rem;
+    padding-right: 0.95rem;
   }
 
-  .theme-roadtrip.has-map .rt-meta {
-    padding-right: calc(var(--rt-map) + 1.2rem);
-  }
-
-  .theme-roadtrip .rt-stream {
-    padding: 0 3.5vw;
-    gap: 3vw;
-  }
-
-  .theme-roadtrip .rt-card,
-  .theme-roadtrip .rt-card img {
-    max-width: 94vw;
-    height: 100%;
+  .theme-roadtrip .rt-card {
+    width: min(94%, calc(var(--rt-stage-h) * var(--rt-w) / var(--rt-h)));
   }
 
   .theme-roadtrip .rt-nav-btn {

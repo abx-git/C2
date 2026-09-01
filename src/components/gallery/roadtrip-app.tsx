@@ -41,6 +41,19 @@ export function RoadtripApp({ catalog, resolveUrl, className }: RoadtripAppProps
   const showMap = geoPhotos.length > 0;
   const current = photos[index];
 
+  const scrollToIndex = useCallback((next: number, behavior: ScrollBehavior) => {
+    const stage = stageRef.current;
+    const card = cardsRef.current[next];
+    if (!stage || !card || card.offsetWidth < 2) return false;
+    const cardRect = card.getBoundingClientRect();
+    const stageRect = stage.getBoundingClientRect();
+    const left =
+      stage.scrollLeft + (cardRect.left + cardRect.width / 2) - (stageRect.left + stageRect.width / 2);
+    programmatic.current = true;
+    stage.scrollTo({ left: Math.max(0, left), behavior });
+    return true;
+  }, []);
+
   useEffect(() => {
     if (index >= photos.length) setIndex(Math.max(0, photos.length - 1));
   }, [index, photos.length]);
@@ -50,52 +63,66 @@ export function RoadtripApp({ catalog, resolveUrl, className }: RoadtripAppProps
       if (!photos.length) return;
       const clamped = Math.max(0, Math.min(photos.length - 1, next));
       setIndex(clamped);
-      if (!scroll) return;
-      const card = cardsRef.current[clamped];
-      if (!card) return;
-      programmatic.current = true;
-      card.scrollIntoView({ inline: "center", block: "nearest", behavior: "smooth" });
+      if (scroll) scrollToIndex(clamped, "smooth");
     },
-    [photos.length],
+    [photos.length, scrollToIndex],
   );
 
   useEffect(() => {
-    const card = cardsRef.current[index];
-    if (!card) return;
-    programmatic.current = true;
-    card.scrollIntoView({ inline: "center", block: "nearest", behavior: "auto" });
-  }, [photos.length]);
+    const stage = stageRef.current;
+    if (!stage) return;
+    let lastH = -1;
+    let lastW = -1;
+    const recenter = () => {
+      const h = stage.clientHeight;
+      const w = stage.clientWidth;
+      if (h === lastH && w === lastW) return;
+      lastH = h;
+      lastW = w;
+      if (h > 0) stage.style.setProperty("--rt-stage-h", `${h}px`);
+      requestAnimationFrame(() => scrollToIndex(indexRef.current, "auto"));
+    };
+    recenter();
+    const ro = new ResizeObserver(recenter);
+    ro.observe(stage);
+    return () => ro.disconnect();
+  }, [photos.length, scrollToIndex]);
 
   useEffect(() => {
     const stage = stageRef.current;
     if (!stage) return;
     let timer = 0;
-    const syncFromScroll = () => {
-      if (programmatic.current) {
-        programmatic.current = false;
-        return;
-      }
-      const mid = stage.scrollLeft + stage.clientWidth / 2;
-      let best = 0;
+    const nearestIndex = () => {
+      const mid = stage.getBoundingClientRect().left + stage.clientWidth / 2;
+      let best = indexRef.current;
       let bestDist = Infinity;
       cardsRef.current.forEach((card, i) => {
         if (!card) return;
-        const center = card.offsetLeft + card.offsetWidth / 2;
-        const dist = Math.abs(center - mid);
+        const rect = card.getBoundingClientRect();
+        const dist = Math.abs(rect.left + rect.width / 2 - mid);
         if (dist < bestDist) {
           bestDist = dist;
           best = i;
         }
       });
-      setIndex(best);
+      return best;
+    };
+    const settle = () => {
+      if (programmatic.current) {
+        programmatic.current = false;
+        return;
+      }
+      setIndex(nearestIndex());
     };
     const onScroll = () => {
       window.clearTimeout(timer);
-      timer = window.setTimeout(syncFromScroll, 80);
+      timer = window.setTimeout(settle, programmatic.current ? 400 : 120);
     };
     stage.addEventListener("scroll", onScroll, { passive: true });
+    stage.addEventListener("scrollend", settle);
     return () => {
       stage.removeEventListener("scroll", onScroll);
+      stage.removeEventListener("scrollend", settle);
       window.clearTimeout(timer);
     };
   }, [photos.length]);
@@ -213,6 +240,12 @@ export function RoadtripApp({ catalog, resolveUrl, className }: RoadtripAppProps
                       cardsRef.current[i] = el;
                     }}
                     className={`rt-card${active ? " is-active" : ""}`}
+                    style={
+                      {
+                        "--rt-w": Math.max(1, photo.width || 3),
+                        "--rt-h": Math.max(1, photo.height || 2),
+                      } as React.CSSProperties
+                    }
                     onClick={() => {
                       if (active) setLightbox(true);
                       else go(i);
