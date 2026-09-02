@@ -5,8 +5,13 @@ import { join, relative } from "node:path";
 /** Firmenproxys antworten auf URLs mit „/app/“ oft mit 403. */
 export const SAFE_APP_CHUNK_DIR = "c2";
 
+/** Hash-Dateinamen wie 4bd1b696-….js wirken auf Filter wie Malware. */
+export const HASH_CHUNK_RE = /^[0-9a-f]+-[0-9a-f]+\.js$/i;
+
 export function rewriteAppChunkPaths(content) {
-  return content.replaceAll("chunks/app/", `chunks/${SAFE_APP_CHUNK_DIR}/`);
+  return content
+    .replaceAll("chunks/app/", `chunks/${SAFE_APP_CHUNK_DIR}/`)
+    .replace(/chunks\/(?!c2-)([0-9a-f]+-[0-9a-f]+\.js)/gi, "chunks/c2-$1");
 }
 
 async function walk(dir, base, out) {
@@ -27,6 +32,18 @@ async function copyDir(src, dest) {
   }
 }
 
+async function prefixHashedChunkFiles(root) {
+  const dir = join(root, "_next/static/chunks");
+  if (!existsSync(dir)) return;
+  for (const ent of await readdir(dir, { withFileTypes: true })) {
+    if (!ent.isFile() || !HASH_CHUNK_RE.test(ent.name) || ent.name.startsWith("c2-")) continue;
+    const from = join(dir, ent.name);
+    const to = join(dir, `c2-${ent.name}`);
+    await writeFile(to, await readFile(from));
+    await rm(from);
+  }
+}
+
 export async function relocateAppChunks(root) {
   const src = join(root, "_next/static/chunks/app");
   const dest = join(root, `_next/static/chunks/${SAFE_APP_CHUNK_DIR}`);
@@ -34,6 +51,7 @@ export async function relocateAppChunks(root) {
     await copyDir(src, dest);
     await rm(src, { recursive: true, force: true });
   }
+  await prefixHashedChunkFiles(root);
   const files = [];
   await walk(root, root, files);
   for (const path of files) {

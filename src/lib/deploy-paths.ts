@@ -2,7 +2,9 @@
 export const SAFE_APP_CHUNK_DIR = "c2";
 
 export function rewriteAppChunkPaths(content: string): string {
-  return content.replaceAll("chunks/app/", `chunks/${SAFE_APP_CHUNK_DIR}/`);
+  return content
+    .replaceAll("chunks/app/", `chunks/${SAFE_APP_CHUNK_DIR}/`)
+    .replace(/chunks\/(?!c2-)([0-9a-f]+-[0-9a-f]+\.js)/gi, "chunks/c2-$1");
 }
 
 function assetPrefixFor(relPath: string): string {

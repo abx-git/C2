@@ -121,8 +121,30 @@ async function relocateAppChunks(dest: FileSystemDirectoryHandle): Promise<void>
   await chunks.removeEntry("app", { recursive: true });
 }
 
+async function prefixHashedChunkFiles(dest: FileSystemDirectoryHandle): Promise<void> {
+  let chunks: FileSystemDirectoryHandle;
+  try {
+    chunks = await getDirectoryAtPath(dest, "_next/static/chunks");
+  } catch {
+    return;
+  }
+  const hashed: string[] = [];
+  for await (const [name, handle] of chunks.entries()) {
+    if (handle.kind !== "file") continue;
+    if (name.startsWith("c2-")) continue;
+    if (!/^[0-9a-f]+-[0-9a-f]+\.js$/i.test(name)) continue;
+    hashed.push(name);
+  }
+  for (const name of hashed) {
+    const file = await (await chunks.getFileHandle(name)).getFile();
+    await writeFileInDir(chunks, `c2-${name}`, file);
+    await chunks.removeEntry(name);
+  }
+}
+
 async function rewriteCopiedAppForFileOpen(dest: FileSystemDirectoryHandle): Promise<void> {
   await relocateAppChunks(dest);
+  await prefixHashedChunkFiles(dest);
   const files = await listRelativeFiles(dest, "", new Set(["data", "images"]));
   for (const path of files) {
     if (!/\.(html|js|css|txt|json)$/.test(path)) continue;
