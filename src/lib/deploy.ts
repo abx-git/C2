@@ -103,10 +103,29 @@ async function loadManifest(url: string): Promise<Manifest | null> {
   return (await res.json()) as Manifest;
 }
 
+async function relocateAppChunks(dest: FileSystemDirectoryHandle): Promise<void> {
+  let chunks: FileSystemDirectoryHandle;
+  try {
+    chunks = await getDirectoryAtPath(dest, "_next/static/chunks");
+  } catch {
+    return;
+  }
+  let appDir: FileSystemDirectoryHandle;
+  try {
+    appDir = await chunks.getDirectoryHandle("app");
+  } catch {
+    return;
+  }
+  const safe = await chunks.getDirectoryHandle("c2", { create: true });
+  await copyDirectoryHandle(appDir, safe);
+  await chunks.removeEntry("app", { recursive: true });
+}
+
 async function rewriteCopiedAppForFileOpen(dest: FileSystemDirectoryHandle): Promise<void> {
+  await relocateAppChunks(dest);
   const files = await listRelativeFiles(dest, "", new Set(["data", "images"]));
   for (const path of files) {
-    if (!/\.(html|js|css|txt)$/.test(path)) continue;
+    if (!/\.(html|js|css|txt|json)$/.test(path)) continue;
     const text = await readTextFile(dest, path);
     if (text == null) continue;
     const next = rewriteAssetPaths(path, text);

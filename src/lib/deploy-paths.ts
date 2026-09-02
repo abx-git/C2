@@ -1,3 +1,10 @@
+/** Firmenproxys antworten auf URLs mit „/app/“ oft mit 403. */
+export const SAFE_APP_CHUNK_DIR = "c2";
+
+export function rewriteAppChunkPaths(content: string): string {
+  return content.replaceAll("chunks/app/", `chunks/${SAFE_APP_CHUNK_DIR}/`);
+}
+
 function assetPrefixFor(relPath: string): string {
   const slash = relPath.lastIndexOf("/");
   if (slash < 0) return "./";
@@ -40,5 +47,5 @@ export function rewriteAssetPaths(relPath: string, content: string, extraBase = 
   if (relPath.endsWith(".js")) {
     next = next.replace(/r\.p="[^"]*\/_next\/"/g, 'r.p="./_next/"');
   }
-  return next;
+  return rewriteAppChunkPaths(next);
 }

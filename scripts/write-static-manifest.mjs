@@ -1,6 +1,7 @@
 import { copyFile, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
+import { relocateAppChunks } from "./rewrite-app-chunk-dir.mjs";
 
 async function walk(dir, base, out) {
   for (const ent of await readdir(dir, { withFileTypes: true })) {
@@ -105,6 +106,7 @@ const outDir = join(process.cwd(), "out");
 const pagesBuild = Boolean(process.env.NEXT_PUBLIC_BASE_PATH && process.env.NEXT_PUBLIC_BASE_PATH !== "/");
 
 await writeCatalogJs(outDir);
+await relocateAppChunks(outDir);
 await writeFile(join(outDir, ".nojekyll"), "");
 
 const files = [];
