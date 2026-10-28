@@ -160,7 +160,7 @@ export function EditorShell() {
             {error}
           </pre>
         ) : null}
-        {message ? <p className="mb-3 text-sm text-[var(--edit-muted)]">{message}</p> : null}
+        {message ? <StatusMessage text={message} /> : null}
 
         {restoring && status !== "ready" && !needsGesture ? (
           <p className="mb-3 text-sm text-[var(--edit-muted)]">
@@ -233,10 +233,10 @@ function ProjectWelcome({ onNew, onOpen }: { onNew: () => void; onOpen: () => vo
     <div className="mx-auto mt-10 max-w-xl rounded-2xl border border-[var(--edit-line)] bg-[var(--edit-panel)] p-8">
       <h1 className="mb-2 text-lg font-medium">Willkommen bei C2</h1>
       <p className="mb-6 text-sm leading-relaxed text-[var(--edit-muted)]">
-        Alles Bearbeitete liegt in einem <strong className="font-medium text-[var(--edit-ink)]">Projektordner</strong> auf
-        Ihrem Rechner (Originale, Katalog, Einstellungen). Die öffentliche Website entsteht separat über einen{" "}
-        <strong className="font-medium text-[var(--edit-ink)]">Deploy-Ordner</strong> — dorthin geht erst etwas online,
-        wenn Sie das bewusst auslösen.
+        Alles Bearbeitete liegt in einem <strong className="font-medium text-[var(--edit-ink)]">Projektordner</strong>{" "}
+        (Originale, Katalog, Einstellungen). Die öffentliche Website entsteht im Unterordner{" "}
+        <strong className="font-medium text-[var(--edit-ink)]">deploy/</strong> — online geht sie mit{" "}
+        <strong className="font-medium text-[var(--edit-ink)]">Veröffentlichen</strong>.
       </p>
       {fsHint ? (
         <pre className="mb-6 whitespace-pre-wrap rounded-lg border border-[var(--edit-line)] bg-white px-3 py-3 text-xs leading-relaxed text-[var(--edit-ink)]">
@@ -264,14 +264,31 @@ function ProjectWelcome({ onNew, onOpen }: { onNew: () => void; onOpen: () => vo
           <span className="font-medium text-[var(--edit-ink)]">Struktur</span> — Seiten und Galerie-Aufbau festlegen
         </li>
         <li>
-          <span className="font-medium text-[var(--edit-ink)]">Deploy-Ordner</span> — fertige Website lokal erzeugen, dann{" "}
-          <span className="font-medium text-[var(--edit-ink)]">Zum Server</span>
+          <span className="font-medium text-[var(--edit-ink)]">Veröffentlichen</span> — baut{" "}
+          <span className="font-medium text-[var(--edit-ink)]">deploy/</span> im Projekt und lädt auf den Server
         </li>
       </ol>
       <p className="text-xs text-[var(--edit-muted)]">
         Noch kein Projekt? „Neues Projekt anlegen“ und einen leeren Ordner wählen — Sie müssen nichts von Hand anlegen.
       </p>
     </div>
+  );
+}
+
+function StatusMessage({ text }: { text: string }) {
+  const url = text.match(/(https:\/\/[^\s]+)/)?.[1];
+  if (!url) {
+    return <p className="mb-3 text-sm text-[var(--edit-muted)]">{text}</p>;
+  }
+  const parts = text.split(url);
+  return (
+    <p className="mb-3 text-sm text-[var(--edit-muted)]">
+      {parts[0]}
+      <a href={url} className="font-medium text-[var(--edit-ink)] underline" target="_blank" rel="noopener noreferrer">
+        {url}
+      </a>
+      {parts[1]}
+    </p>
   );
 }
 

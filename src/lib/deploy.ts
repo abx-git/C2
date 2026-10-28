@@ -26,7 +26,6 @@ import {
   writeTextFile,
   getDirectoryAtPath,
 } from "./workspace";
-import { isCapacitorNative } from "./c2-fs";
 
 export type DeployResult = {
   photoCount: number;
@@ -41,20 +40,8 @@ export type DeployResult = {
   publishPath: string;
 };
 
-async function resolveDeployDest(
-  picked: FileSystemDirectoryHandle,
-  publishPath: string,
-  nestSlugFolder: boolean,
-): Promise<FileSystemDirectoryHandle> {
-  // Android / klare Wahl: immer genau den gewählten Ordner beschreiben.
-  // Desktop (historisch): bei Unterordner `{slug}.deploy` im gewählten Ordner anlegen,
-  // damit der Sync-Helfer Geschwister neben der Hauptgalerie findet.
-  if (!nestSlugFolder) return picked;
-  const slug = normalizePublishPath(publishPath);
-  if (!slug) return picked;
-  const name = picked.name.replace(/\/$/, "");
-  if (name === slug || name === `${slug}.deploy`) return picked;
-  return picked.getDirectoryHandle(`${slug}.deploy`, { create: true });
+async function resolveDeployDest(picked: FileSystemDirectoryHandle): Promise<FileSystemDirectoryHandle> {
+  return picked;
 }
 
 export type DeployProgress = {
@@ -216,11 +203,7 @@ export async function writeDeployFolder(opts: {
   password?: string;
   onProgress?: (progress: DeployProgress) => void;
 }): Promise<DeployResult> {
-  const dest = await resolveDeployDest(
-    opts.dest,
-    opts.catalog.site.publishPath,
-    !isCapacitorNative(),
-  );
+  const dest = await resolveDeployDest(opts.dest);
   const publishPath = normalizePublishPath(opts.catalog.site.publishPath);
   let copiedApp = false;
   let appSource: DeployResult["appSource"] = "none";

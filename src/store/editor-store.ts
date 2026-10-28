@@ -436,7 +436,7 @@ async function presentWorkspace(
       extra.message ??
       (count
         ? `Vorschaubilder 0/${count}`
-        : `Projekt „${handle.name}“ bereit. Als Nächstes: Tab „Bilder“ — Fotos importieren. Zum Veröffentlichen später „Deploy-Ordner“ im Projektmenü (oben rechts).`),
+        : `Projekt „${handle.name}“ bereit. Als Nächstes: Tab „Bilder“ — Medien importieren. Veröffentlichen legt deploy/ an und lädt hoch.`),
     thumbUrls: {},
     displayUrls: {},
     ...historyFlags(),

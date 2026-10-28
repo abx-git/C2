@@ -235,6 +235,16 @@ body {
   background: #efece6;
 }
 
+.edit-menu-panel button.edit-menu-primary {
+  font-weight: 500;
+  background: var(--edit-ink);
+  color: #f7f5f1;
+}
+
+.edit-menu-panel button.edit-menu-primary:hover:not(:disabled) {
+  background: #2a2926;
+}
+
 .edit-menu-panel button:disabled {
   opacity: 0.45;
   cursor: default;

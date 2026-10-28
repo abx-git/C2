@@ -3,21 +3,18 @@
 import { useEffect, useRef, useState } from "react";
 import { SyncSetupDialog } from "@/components/editor/sync-setup-dialog";
 import { appBase } from "@/lib/app-base";
-import { normalizePublishPath } from "@/lib/catalog";
 import {
-  deployFolderPickHint,
   describeSync,
   fetchSyncStatus,
-  missingDeployHint,
+  formatUploadResultMessage,
   rememberDeployDirectory,
   runSyncTransfer,
-  startProtocolTransfer,
-  wrongDeployFolderHint,
   type SyncStatus,
 } from "@/lib/c2-sync";
 import { hasNativeSync } from "@/lib/c2-sync-native";
 import { writeDeployFolder } from "@/lib/deploy";
-import { pickDirectory, supportsDirectoryPicker } from "@/lib/workspace";
+import { ensureProjectDeployDir, projectDeployHasSite } from "@/lib/project-deploy";
+import { publicSiteLink } from "@/lib/publish-url";
 import { useEditorStore } from "@/store/editor-store";
 
 export function DeployButton() {
@@ -37,13 +34,15 @@ export function DeployButton() {
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState<{ current: number; total: number; skipped: number } | null>(null);
   const [sync, setSync] = useState<SyncStatus | null | undefined>(undefined);
+  const [localDeployReady, setLocalDeployReady] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const native = hasNativeSync();
+  const projectFolder = workspaceLabel ?? "";
 
   useEffect(() => {
     let cancelled = false;
     const refresh = async (probe = false) => {
-      const next = await fetchSyncStatus(probe, publishPath);
+      const next = await fetchSyncStatus(probe, publishPath, projectFolder);
       if (!cancelled) setSync(next);
     };
     void refresh(false);
@@ -52,7 +51,22 @@ export function DeployButton() {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [publishPath]);
+  }, [publishPath, projectFolder]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const handle = getWorkspaceHandle();
+    if (!handle || status !== "ready") {
+      setLocalDeployReady(false);
+      return;
+    }
+    void projectDeployHasSite(handle).then((ready) => {
+      if (!cancelled) setLocalDeployReady(ready);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [getWorkspaceHandle, status, catalog, busy]);
 
   useEffect(() => {
     if (!open) return;
@@ -75,7 +89,7 @@ export function DeployButton() {
   };
 
   const refreshSync = async (probe = false) => {
-    const next = await fetchSyncStatus(probe, publishPath);
+    const next = await fetchSyncStatus(probe, publishPath, projectFolder);
     setSync(next);
     return next;
   };
@@ -94,33 +108,28 @@ export function DeployButton() {
   }
 
   const busyLabel =
-    progress && progress.total ? `Schreibe ${progress.current}/${progress.total}…` : "Schreibe…";
-  const syncView = sync === undefined ? null : describeSync(sync, projectSync, publishPath);
-  const syncReady = Boolean(sync?.configured && sync.deployExists && sync.reachable !== false);
+    progress && progress.total ? `Veröffentliche ${progress.current}/${progress.total}…` : "Veröffentliche…";
+  const syncView = sync === undefined ? null : describeSync(sync, projectSync, publishPath, localDeployReady);
   const syncBad = syncView?.tone === "err";
   const mac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.userAgent);
   const saveShortcut = mac ? "⌘S" : "Strg+S";
   const saveAsShortcut = mac ? "⇧⌘S" : "Strg+Umschalt+S";
   const openShortcut = mac ? "⌘O" : "Strg+O";
+  const remoteBase = projectSync.remote || sync?.remote || "likibox";
 
-  const runDeploy = async () => {
+  const runPublish = async () => {
     setOpen(false);
-    setProgress(null);
-    const remoteBase = projectSync.remote || sync?.remote || "likibox";
-    setMessage(deployFolderPickHint(publishPath, remoteBase));
-    const dest = await pickDirectory("readwrite", { id: "c2-deploy-dest", startIn: "documents" });
-    if (!dest) {
-      setMessage("Abgebrochen.");
-      return;
-    }
     const workspace = getWorkspaceHandle();
     if (!workspace) {
       setMessage("Kein Projekt geöffnet.");
       return;
     }
     setBusy(true);
+    setProgress(null);
     try {
+      setMessage("Schritt 1/2: Website wird in deploy/ gebaut …");
       await saveCatalog(true);
+      const dest = await ensureProjectDeployDir(workspace);
       const result = await writeDeployFolder({
         dest,
         catalog,
@@ -130,123 +139,53 @@ export function DeployButton() {
         onProgress: setProgress,
       });
       await rememberDeployDirectory(dest);
-      setSync(await fetchSyncStatus(false, publishPath));
-      const slug = normalizePublishPath(publishPath);
-      const target = slug
-        ? `${(remoteBase || "likibox").replace(/\/+$/, "")}/${slug}/`
-        : `${(remoteBase || "likibox").replace(/\/+$/, "")}/`;
-      const appNote = result.copiedApp
-        ? `Website nach „${dest.name}“ geschrieben (App-Dateien + Bilder — deshalb viele Dateien beim Upload).`
-        : `Nur Daten nach „${dest.name}“ geschrieben. Einmal „npm run build:static“, dann erneut deployen.`;
-      const extra = [
-        result.mode === "roadtrip" ? "Roadtrip" : "Galerie",
-        `${result.photoCount} Bild${result.photoCount === 1 ? "" : "er"}`,
-        result.geoCount ? `${result.geoCount} GPS-Punkte` : null,
-        result.watermarked ? "Wasserzeichen" : null,
-        result.encrypted ? "verschlüsselt" : null,
-        `Server-Ziel ${target}`,
-        syncReady || hasNativeSync() ? "Als Nächstes „Zum Server“." : null,
-      ]
-        .filter(Boolean)
-        .join(" · ");
-      setMessage(`${appNote} ${extra}`);
-    } catch (err) {
-      setMessage(err instanceof Error ? err.message : "Deploy fehlgeschlagen");
-    } finally {
-      setBusy(false);
-      setProgress(null);
-    }
-  };
+      setLocalDeployReady(true);
+      setSync(await fetchSyncStatus(false, publishPath, projectFolder));
 
-  const writeDeployTo = async (dest: FileSystemDirectoryHandle) => {
-    const workspace = getWorkspaceHandle();
-    if (!workspace) {
-      setMessage("Kein Projekt geöffnet.");
-      return false;
-    }
-    setProgress(null);
-    await saveCatalog(true);
-    await writeDeployFolder({
-      dest,
-      catalog,
-      workspace,
-      originBase: appBase(),
-      password: useEditorStore.getState().galleryPassword,
-      onProgress: setProgress,
-    });
-    await rememberDeployDirectory(dest);
-    return true;
-  };
-
-  const runServer = async () => {
-    setOpen(false);
-    setBusy(true);
-    try {
-      const slug = normalizePublishPath(publishPath);
-      const serverTarget = slug ? `likibox/${slug}/` : "likibox/";
-      const remoteBase = projectSync.remote || sync?.remote || "likibox";
-
-      // Ordnerdialog muss direkt nach dem Klick kommen — vor Sync-Probe (20 s).
-      if (sync?.configured && sync.deployExists === false) {
-        setMessage(deployFolderPickHint(publishPath, remoteBase));
-        const dest = await pickDirectory("readwrite", { id: "c2-deploy-dest", startIn: "documents" });
-        if (!dest) {
-          setMessage("Abgebrochen.");
-          return;
-        }
-        if (!(await writeDeployTo(dest))) return;
+      if (!result.copiedApp) {
+        setMessage(
+          "Website in deploy/ geschrieben, aber App-Dateien fehlen. Einmal „npm run build:static“ im C2-Ordner, dann erneut veröffentlichen.",
+        );
+        return;
       }
 
-      if (native) {
-        setMessage(`Upload nach ${serverTarget} … (App-Dateien + Bilder, kann etwas dauern)`);
-      } else {
-        setMessage("Übertrage auf den Likibox-Server…");
-      }
-      let live = await fetchSyncStatus(true, publishPath);
+      const link = publicSiteLink(catalog.site, remoteBase);
+      const buildNote = `deploy/ im Projekt: ${result.photoCount} Medien · ${result.mode === "roadtrip" ? "Roadtrip" : "Galerie"}.`;
+
+      setMessage("Schritt 2/2: Upload zum Server …");
+      const live = await fetchSyncStatus(true, publishPath, projectFolder);
       setSync(live);
-      const view = describeSync(live, projectSync, publishPath);
-      if (live && !live.configured) {
-        setMessage(view.label);
-        if (native) setSetupOpen(true);
+
+      if (native && live && !live.configured) {
+        setMessage(`${buildNote} Upload: bitte „Sync einrichten“. ${link.hint}`);
+        setSetupOpen(true);
         return;
       }
+
+      if (!native && live && !live.configured) {
+        setMessage(
+          `${buildNote} Upload: Sync-Helfer fehlt (setup.command). Website liegt lokal in deploy/. ${link.hint}`,
+        );
+        return;
+      }
+
       if (live?.reachable === false) {
-        setMessage(view.label);
+        setMessage(`${buildNote} Server nicht erreichbar — Upload später erneut. ${link.hint}`);
         return;
       }
-      if (!live) {
-        if (native) {
-          setMessage("Native Sync nicht erreichbar. App neu starten.");
-          return;
-        }
-        startProtocolTransfer(publishPath);
-        setMessage(
-          slug
-            ? `Übertragung auf den Likibox-Server unter /${slug}/ gestartet. Falls der Browser fragt: C2 Sync öffnen.`
-            : "Übertragung auf den Likibox-Server gestartet. Falls der Browser fragt: C2 Sync öffnen.",
-        );
+
+      const upload = await runSyncTransfer(publishPath, projectSync, projectFolder);
+      setSync(await fetchSyncStatus(false, publishPath, projectFolder));
+
+      if (!upload.ok) {
+        setMessage(`${buildNote} Upload fehlgeschlagen: ${upload.error}`);
         return;
       }
-      if (!live.deployExists) {
-        setMessage(
-          `${missingDeployHint(live, publishPath)} Bitte zuerst „Deploy-Ordner“ wählen, danach erneut „Zum Server“.`,
-        );
-        return;
-      }
-      const result = await runSyncTransfer(publishPath, projectSync);
-      setSync(await fetchSyncStatus(false, publishPath));
-      const remoteOk = result.remote
-        ? `${result.fileCount ?? "?"} Dateien nach ${result.remote}/ hochgeladen.`
-        : slug
-          ? `Galerie ist auf dem Likibox-Server unter /${slug}/.`
-          : "Galerie ist auf dem Likibox-Server.";
-      const launched =
-        slug
-          ? `Übertragung auf den Likibox-Server unter /${slug}/ gestartet. Falls der Browser fragt: C2 Sync öffnen.`
-          : "Übertragung auf den Likibox-Server gestartet. Falls der Browser fragt: C2 Sync öffnen.";
-      setMessage(result.ok ? (result.via === "app" ? launched : remoteOk) : result.error);
+
+      const uploadMsg = formatUploadResultMessage(upload.ok, upload.error, upload.via, link.hint);
+      setMessage(`${buildNote} ${uploadMsg}`);
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : "Übertragung fehlgeschlagen");
+      setMessage(err instanceof Error ? err.message : "Veröffentlichen fehlgeschlagen.");
     } finally {
       setBusy(false);
       setProgress(null);
@@ -271,6 +210,14 @@ export function DeployButton() {
         </button>
         {open ? (
           <div className="edit-menu-panel" role="menu">
+            <button type="button" role="menuitem" disabled={busy} className="edit-menu-primary" onClick={() => void runPublish()}>
+              Veröffentlichen
+            </button>
+            <p className="edit-menu-note">
+              Baut die Website nach <strong>deploy/</strong> im Projekt und lädt sie hoch. Server-Unterordner: Struktur →
+              „Unterordner auf dem Server“.
+            </p>
+            <div className="edit-menu-sep" />
             <button
               type="button"
               role="menuitem"
@@ -317,13 +264,6 @@ export function DeployButton() {
               Trennen
             </button>
             <div className="edit-menu-sep" />
-            <button type="button" role="menuitem" disabled={busy} onClick={() => void runDeploy()}>
-              Deploy-Ordner
-            </button>
-            <button type="button" role="menuitem" disabled={busy} onClick={() => void runServer()}>
-              Zum Server
-            </button>
-            <div className="edit-menu-sep" />
             {syncView ? <p className="edit-menu-note">{syncView.label}</p> : null}
             <button
               type="button"
@@ -334,14 +274,11 @@ export function DeployButton() {
                   setSetupOpen(true);
                   return;
                 }
-                setMessage(
-                  "Der Helfer startet nach dem Anmelden selbst. Nur wenn er fehlt: einmal setup.command (Mac) bzw. setup.cmd (Windows).",
-                );
+                setMessage("Einmal setup.command (Mac) bzw. setup.cmd (Windows) — danach reicht „Veröffentlichen“.");
               }}
             >
               Sync einrichten
             </button>
-            {!supportsDirectoryPicker() ? <p className="edit-menu-note">Chrome oder Edge nötig.</p> : null}
           </div>
         ) : null}
       </div>
@@ -350,7 +287,7 @@ export function DeployButton() {
           open={setupOpen}
           onClose={() => setSetupOpen(false)}
           onSaved={() => {
-            void refreshSync(true).then(() => setMessage("Sync gespeichert."));
+            void refreshSync(true).then(() => setMessage("Sync gespeichert. Jetzt „Veröffentlichen“."));
           }}
         />
       ) : null}

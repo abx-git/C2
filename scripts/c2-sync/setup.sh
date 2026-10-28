@@ -204,15 +204,15 @@ if [ "$had_config" -eq 0 ]; then
 try
   display dialog "C2 richtet die Übertragung auf den Likibox-Server ein.
 
-Der lokale Ordner kommt aus dem Editor (Deploy-Ordner / Zum Server), nicht aus diesem Setup.
+Im Editor reicht „Veröffentlichen“ — die Website landet in deploy/ im Projekt.
 
-Danach: Schreibtisch „C2 Galerie übertragen“ und im Editor „Zum Server“." buttons {"Abbrechen", "OK"} default button "OK"
+Danach: Schreibtisch „C2 Galerie übertragen“ oder im Editor „Veröffentlichen“." buttons {"Abbrechen", "OK"} default button "OK"
 on error number -128
   error "cancelled"
 end try
 APPLESCRIPT
 
-  deploy="$(c2_default_deploy)"
+  deploy="$(ask_text "Ordner, in dem Ihre C2-Projektordner liegen (übergeordnet, z. B. ~/Documents/C2):" "$(c2_default_deploy)" || true)"
   host="$(ask_text "SSH-Host (Name aus ~/.ssh/config oder user@server):" "c2-strato" || true)"
   [ -n "${host:-}" ] || die "Abgebrochen."
   host="$(trim "$host")"

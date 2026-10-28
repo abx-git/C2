@@ -166,7 +166,7 @@ public class C2SyncPlugin extends Plugin {
         if (src == null || !src.isDirectory()) {
           failTransfer(call, subdir.isEmpty()
             ? "Deploy-Ordner fehlt. Zuerst „Deploy-Ordner“ schreiben."
-            : "Noch kein öffentlicher Ordner für „" + subdir + "“. Zuerst „Deploy-Ordner“ schreiben.");
+            : "Noch kein deploy/ — zuerst „Veröffentlichen“ im Editor.");
           return;
         }
         String remote = joinRemote(remoteBase, subdir);

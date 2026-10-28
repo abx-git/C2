@@ -82,8 +82,8 @@ export function SyncSetupDialog({ open, onClose, onSaved }: Props) {
       >
         <h2 id="c2-sync-setup-title">Sync einrichten</h2>
         <p className="edit-menu-note">
-          Nur SFTP-Zugang. Upload-Ziel ist immer <strong>likibox/</strong> plus ggf. Unterordner unter Struktur
-          (z. B. usa26 → <strong>likibox/usa26/</strong>).
+          SFTP-Zugang zum Hosting. Die Website wird im Projekt in <strong>deploy/</strong> gebaut — „Veröffentlichen“ lädt
+          nach <strong>likibox/</strong> plus optional Unterordner unter Struktur.
         </p>
         <label className="edit-modal-field">
           <span>Host</span>

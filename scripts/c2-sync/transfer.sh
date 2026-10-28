@@ -94,6 +94,26 @@ if [ -n "$publish" ]; then
     || fail "Ungültiger Unterordner. Nur ein Segment, z. B. montreal."
 fi
 
+if [ -n "$publish" ]; then
+  printf '%s' "$publish" | grep -Eq '^[A-Za-z0-9][A-Za-z0-9._-]*$' \
+    || fail "Ungültiger Unterordner. Nur ein Segment, z. B. montreal."
+fi
+
+project=$(printf '%s' "${C2_PROJECT_NAME:-}" | sed 's|^/*||;s|/*$||')
+if [ -n "$project" ] && [ -d "$deploy/$project/deploy" ]; then
+  src="$deploy/$project/deploy"
+  dest_remote="$remote"
+  if [ -n "$publish" ]; then
+    dest_remote="${remote%/}/$publish"
+  fi
+elif [ -n "$project" ] && [ -d "$deploy/deploy" ] && [ -f "$deploy/deploy/index.html" ]; then
+  # deploy-Konfiguration zeigt bereits auf ein einzelnes Projekt
+  src="$deploy/deploy"
+  dest_remote="$remote"
+  if [ -n "$publish" ]; then
+    dest_remote="${remote%/}/$publish"
+  fi
+else
 src="$deploy"
 dest_remote="$remote"
 if [ -n "$publish" ]; then
@@ -109,6 +129,7 @@ if [ -n "$publish" ]; then
     src="$parent/${publish}.deploy"
   fi
   dest_remote="${remote%/}/$publish"
+fi
 fi
 
 if [ ! -d "$src" ]; then

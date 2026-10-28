@@ -159,7 +159,28 @@ def sanitize_publish(raw: str) -> str:
     return value
 
 
-def resolve_local_src(deploy: str, publish: str) -> Path:
+def resolve_project_deploy(deploy_cfg: str, project: str) -> Optional[Path]:
+    if not project or not deploy_cfg:
+        return None
+    root = Path(deploy_cfg)
+    candidates = [
+        root / project / "deploy",
+        root / project,
+    ]
+    for path in candidates:
+        if path.is_dir() and (path / "index.html").is_file():
+            return path
+    nested = root / project / "deploy"
+    if nested.is_dir():
+        return nested
+    return None
+
+
+def resolve_local_src(deploy: str, publish: str, project: str = "") -> Path:
+    if project:
+        found = resolve_project_deploy(deploy, project)
+        if found is not None and found.is_dir():
+            return found
     deploy_path = Path(deploy)
     if not publish:
         return deploy_path
@@ -182,7 +203,7 @@ def join_remote(remote: str, publish: str) -> str:
     return f"{base}/{publish}" if base else publish
 
 
-def status_payload(do_probe: bool, publish: str = "") -> Dict[str, Any]:
+def status_payload(do_probe: bool, publish: str = "", project: str = "") -> Dict[str, Any]:
     cfg = read_config()
     configured = bool(cfg.get("deploy") and cfg.get("method"))
     deploy_cfg = cfg.get("deploy", "")
@@ -191,7 +212,7 @@ def status_payload(do_probe: bool, publish: str = "") -> Dict[str, Any]:
         slug = sanitize_publish(publish) if publish else ""
     except ValueError:
         slug = ""
-    src = str(resolve_local_src(deploy_cfg, slug)) if deploy_cfg else ""
+    src = str(resolve_local_src(deploy_cfg, slug, project)) if deploy_cfg else ""
     remote = join_remote(cfg.get("remote", ""), slug)
     payload: Dict[str, Any] = {
         "agent": True,
@@ -212,12 +233,14 @@ def status_payload(do_probe: bool, publish: str = "") -> Dict[str, Any]:
     return payload
 
 
-def run_transfer(publish: str = "", overlay: Optional[Dict[str, str]] = None) -> Tuple[bool, Optional[str]]:
+def run_transfer(publish: str = "", overlay: Optional[Dict[str, str]] = None, project: str = "") -> Tuple[bool, Optional[str]]:
     script = HOME / "transfer.sh"
     env = env_with_bin()
     ensure_rclone()
     if publish:
         env["C2_PUBLISH_PATH"] = publish
+    if project:
+        env["C2_PROJECT_NAME"] = project
     for key, env_key in (
         ("host", "C2_SYNC_HOST"),
         ("remote", "C2_SYNC_REMOTE"),
@@ -289,7 +312,8 @@ class Handler(BaseHTTPRequestHandler):
             return
         probe_flag = parse_qs(parsed.query).get("probe", ["0"])[0] in ("1", "true")
         subdir = parse_qs(parsed.query).get("subdir", [""])[0]
-        self._json(200, status_payload(probe_flag, subdir))
+        project = parse_qs(parsed.query).get("project", [""])[0]
+        self._json(200, status_payload(probe_flag, subdir, project))
 
     def _read_json(self) -> dict:
         length = int(self.headers.get("Content-Length") or 0)
@@ -317,15 +341,27 @@ class Handler(BaseHTTPRequestHandler):
         except ValueError as exc:
             self._json(400, {"ok": False, "error": str(exc)})
             return
+        project = str(body.get("project") or "").strip()
         overlay = {
             "host": str(body.get("host") or ""),
             "remote": str(body.get("remote") or ""),
             "method": str(body.get("method") or ""),
             "rclone_remote": str(body.get("rcloneRemote") or body.get("rclone_remote") or ""),
         }
-        src = resolve_local_src(cfg["deploy"], slug)
+        src = resolve_local_src(cfg["deploy"], slug, project)
         if not src.is_dir():
-            if slug:
+            if project:
+                self._json(
+                    409,
+                    {
+                        "ok": False,
+                        "error": (
+                            f"Im Projekt „{project}“ fehlt deploy/ mit index.html. "
+                            "Bitte im Editor „Veröffentlichen“."
+                        ),
+                    },
+                )
+            elif slug:
                 parent = Path(cfg["deploy"]).parent.name or "der Hauptgalerie"
                 self._json(
                     409,
@@ -351,7 +387,7 @@ class Handler(BaseHTTPRequestHandler):
             return
         STATE["busy"] = True
         try:
-            ok, error = run_transfer(slug, overlay)
+            ok, error = run_transfer(slug, overlay, project)
             self._json(200 if ok else 500, {"ok": ok, "error": error})
         finally:
             STATE["busy"] = False

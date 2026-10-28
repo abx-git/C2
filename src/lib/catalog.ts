@@ -369,6 +369,8 @@ export type SiteFile = {
   contactEmail?: string;
   /** Öffentlicher URL-Unterordner, z. B. `montreal` → /montreal/. Leer = Website-Wurzel. */
   publishPath: string;
+  /** Optionale vollständige Basis-URL, z. B. https://example.de/likibox */
+  publicUrl?: string;
   layout: LayoutConfig;
   protection: SiteProtection;
   pages: SitePage[];
@@ -416,6 +418,7 @@ export function emptySite(): SiteFile {
     theme: "gallery-v1",
     contactEmail: "",
     publishPath: "",
+    publicUrl: "",
     layout: { ...DEFAULT_LAYOUT },
     protection: { ...DEFAULT_PROTECTION },
     pages: [
@@ -643,6 +646,7 @@ export function parseSite(raw: unknown): SiteFile {
     theme: raw.theme === "gallery-v1" ? "gallery-v1" : "gallery-v1",
     contactEmail: typeof raw.contactEmail === "string" ? raw.contactEmail : "",
     publishPath: normalizePublishPath(raw.publishPath),
+    publicUrl: typeof raw.publicUrl === "string" ? raw.publicUrl.trim() : "",
     layout: parseLayout(raw.layout),
     protection: parseProtection(raw.protection),
     pages: pages.length ? pages : emptySite().pages,

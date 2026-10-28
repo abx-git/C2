@@ -70,7 +70,7 @@ export function SiteTreeEditor() {
         <input
           className="edit-field mt-1"
           value={site.publishPath ?? ""}
-          placeholder="leer = Website-Wurzel"
+          placeholder="leer = Hauptgalerie"
           spellCheck={false}
           onChange={(event) => {
             const next = event.target.value.trim().replace(/^\/+|\/+$/g, "").replace(/[^A-Za-z0-9._-]/g, "");
@@ -78,10 +78,23 @@ export function SiteTreeEditor() {
           }}
         />
       </label>
+      <p className="mb-3 text-xs text-[var(--edit-muted)]">
+        Nur der Upload-Pfad (z. B. <code className="text-[var(--edit-ink)]">rotterdam</code> → likibox/rotterdam/). Die
+        Website wird lokal immer in <strong>deploy/</strong> im Projekt gebaut.
+      </p>
+      <label className="mb-1 block text-xs text-[var(--edit-muted)]">
+        Adresse der Website
+        <input
+          className="edit-field mt-1"
+          type="url"
+          value={site.publicUrl ?? ""}
+          placeholder="https://meine-domain.de/likibox"
+          spellCheck={false}
+          onChange={(event) => updateSite({ ...site, publicUrl: event.target.value.trim() })}
+        />
+      </label>
       <p className="mb-5 text-xs text-[var(--edit-muted)]">
-        Leer = Server-Wurzel (z. B. likibox/). Mit Wert „rotterdam“ = likibox/rotterdam/. Auf dem Handy: bei
-        „Deploy-Ordner“ genau den lokalen Ordner wählen, dessen Inhalt dorthin soll — kein Extra-Unterordner
-        wird angelegt.
+        Nach „Veröffentlichen“ erscheint hier der klickbare Link. Optional — sonst nur der Server-Pfad.
       </p>
       <label className="mb-3 block text-xs text-[var(--edit-muted)]">
         Server-Host

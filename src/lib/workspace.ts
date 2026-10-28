@@ -11,7 +11,7 @@ const IDB_NAME = "c2-workspace";
 const IDB_STORE = "handles";
 const IDB_KEY = "workspace-folder";
 
-export const WORKSPACE_DIRS = ["originals", "derived/display", "derived/thumbs", "data"] as const;
+export const WORKSPACE_DIRS = ["originals", "derived/display", "derived/thumbs", "data", "deploy"] as const;
 
 export function supportsDirectoryPicker(): boolean {
   if (typeof window === "undefined") return false;
