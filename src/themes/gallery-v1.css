@@ -497,12 +497,17 @@
   padding: 3.5rem 4rem 1rem;
 }
 
-.theme-gallery-v1 .g-lightbox-stage img {
+.theme-gallery-v1 .g-lightbox-stage img,
+.theme-gallery-v1 .g-lightbox-stage video {
   width: auto;
   height: auto;
   max-width: 100%;
   max-height: 100%;
   object-fit: contain;
+}
+
+.theme-gallery-v1 .g-lightbox-stage video {
+  background: #000;
 }
 
 .theme-gallery-v1 .g-lightbox-caption {

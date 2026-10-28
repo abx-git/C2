@@ -104,6 +104,19 @@ export function clampPhotoRating(value: number): number {
   return Math.min(PHOTO_RATING_MAX, Math.max(PHOTO_RATING_MIN, Math.round(value)));
 }
 
+export function photoKind(photo: Pick<Photo, "kind" | "files">): PhotoKind {
+  if (photo.kind === "video" || photo.kind === "image") return photo.kind;
+  const path = photo.files.display || photo.files.original || photo.files.thumb || "";
+  if (/\.mp4$/i.test(path)) return "video";
+  return "image";
+}
+
+export function isVideoPhoto(photo: Pick<Photo, "kind" | "files">): boolean {
+  return photoKind(photo) === "video";
+}
+
+export type PhotoKind = "image" | "video";
+
 export type Photo = {
   id: string;
   originalName: string;
@@ -113,6 +126,7 @@ export type Photo = {
   tags: string[];
   /** 0 = keine Bewertung, 1–5 Sterne */
   rating: number;
+  kind?: PhotoKind;
   files: PhotoFiles;
   width: number;
   height: number;
@@ -464,6 +478,10 @@ export function parsePhotos(raw: unknown): PhotosFile {
       : undefined;
     const geo =
       "geo" in item ? (item.geo == null ? null : (parsePhotoGeo(item.geo) ?? null)) : undefined;
+    const kindRaw = item.kind;
+    const kind: PhotoKind | undefined =
+      kindRaw === "video" ? "video" : kindRaw === "image" ? "image" : undefined;
+    const filesObj = { original, display, thumb };
     photos.push({
       id,
       originalName: typeof item.originalName === "string" ? item.originalName : id,
@@ -472,12 +490,15 @@ export function parsePhotos(raw: unknown): PhotosFile {
       takenAt: typeof item.takenAt === "string" ? item.takenAt : null,
       tags: Array.isArray(item.tags) ? item.tags.filter((t): t is string => typeof t === "string") : [],
       rating: clampPhotoRating(typeof item.rating === "number" ? item.rating : 0),
-      files: { original, display, thumb },
+      ...(kind ? { kind } : {}),
+      files: filesObj,
       width: typeof item.width === "number" ? item.width : 1,
       height: typeof item.height === "number" ? item.height : 1,
       exif,
       ...(geo !== undefined ? { geo } : {}),
     });
+    const last = photos[photos.length - 1]!;
+    if (!last.kind) last.kind = photoKind(last);
   }
   return { version: 1, photos };
 }
@@ -954,6 +975,14 @@ function fileExt(path: string): string {
 }
 
 export function publicPhotoFiles(photo: Photo, encrypted = false): PhotoFiles {
+  if (isVideoPhoto(photo)) {
+    const displayExt = fileExt(photo.files.display) || "mp4";
+    const thumbExt = encrypted ? ENCRYPTED_IMAGE_EXT : fileExt(photo.files.thumb) || "webp";
+    return {
+      display: `images/display/${photo.id}.${displayExt}`,
+      thumb: `images/thumbs/${photo.id}.${thumbExt}`,
+    };
+  }
   const displayExt = encrypted ? ENCRYPTED_IMAGE_EXT : fileExt(photo.files.display);
   const thumbExt = encrypted ? ENCRYPTED_IMAGE_EXT : fileExt(photo.files.thumb);
   return {

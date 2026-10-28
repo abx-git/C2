@@ -7,6 +7,7 @@ import {
   clampFadeInDuration,
   clampSlideshowInterval,
   coverPhoto,
+  isVideoPhoto,
   galleryThemeStyle,
   flattenLeafPages,
   navPages,
@@ -371,7 +372,11 @@ export function GalleryApp({ catalog, resolveUrl, className }: GalleryAppProps) 
                         aria-label={caption ? `${label}. ${caption}` : label}
                       >
                         {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={resolveUrl(photo, "display")} alt={label} draggable={false} />
+                        <img
+                          src={resolveUrl(photo, isVideoPhoto(photo) ? "thumb" : "display")}
+                          alt={label}
+                          draggable={false}
+                        />
                         {caption ? <span className="g-shot-caption">{caption}</span> : null}
                       </button>
                     );

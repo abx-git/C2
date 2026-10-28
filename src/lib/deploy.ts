@@ -3,6 +3,7 @@ import {
   toPublicCatalog,
   toPublicPhotos,
   watermarkLabel,
+  isVideoPhoto,
   type Catalog,
   type SiteProtection,
 } from "./catalog";
@@ -316,6 +317,24 @@ export async function writeDeployFolder(opts: {
         : readBinaryFile(opts.workspace, photo.files.thumb),
     ]);
     if (!displayFile || !thumbFile) throw new Error(`Datei fehlt: ${photo.originalName || photo.id}`);
+
+    if (isVideoPhoto(photo)) {
+      const [wroteDisplay, wroteThumb] = await Promise.all([
+        writeIfChanged(displayDir, fileName(files.display), displayFile, displayFile.size),
+        writeIfChanged(
+          thumbDir,
+          fileName(files.thumb),
+          await publishImage(thumbFile, { key }),
+          key ? undefined : thumbFile.size,
+        ),
+      ]);
+      done += 1;
+      if (!wroteDisplay && !wroteThumb) skipped += 1;
+      opts.onProgress?.({ current: done, total, skipped });
+      if (done % 4 === 0) await new Promise((resolve) => setTimeout(resolve, 0));
+      return;
+    }
+
     const [displayOut, thumbOut] = await Promise.all([
       publishImage(displayFile, { watermark: mark || undefined, key }),
       publishImage(thumbFile, { key }),

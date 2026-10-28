@@ -32,7 +32,8 @@ import {
 } from "@/lib/catalog";
 import { newId } from "@/lib/id";
 import { readFileExif } from "@/lib/exif";
-import { isImageFile, prepareImage } from "@/lib/image-prepare";
+import { prepareImage } from "@/lib/image-prepare";
+import { isMediaFile, isVideoFile, prepareVideo } from "@/lib/video-prepare";
 import {
   WORKSPACE_DIRS,
   clearDirectoryHandle,
@@ -671,9 +672,9 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       set({ error: "Bitte zuerst ein Projekt mit Schreibzugriff öffnen." });
       return;
     }
-    const images = files.filter(isImageFile);
-    if (!images.length) {
-      set({ error: "Keine Bilddateien gefunden." });
+    const media = files.filter(isMediaFile);
+    if (!media.length) {
+      set({ error: "Keine Bild- oder MP4-Dateien gefunden." });
       return;
     }
     rememberEdit(get, set);
@@ -688,47 +689,75 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const displayDir = await ensureDirPath(handle, "derived/display");
     const thumbsDir = await ensureDirPath(handle, "derived/thumbs");
     type Imported = { photo: Photo; thumb?: string; display?: string };
-    const imported: (Imported | { error: string } | undefined)[] = new Array(images.length);
+    const imported: (Imported | { error: string } | undefined)[] = new Array(media.length);
     let finished = 0;
 
-    await runPool(images, 2, async (file, index) => {
-      set({ importProgress: { current: finished + 1, total: images.length, name: file.name }, error: null });
+    await runPool(media, 2, async (file, index) => {
+      set({ importProgress: { current: finished + 1, total: media.length, name: file.name }, error: null });
       try {
-        const prepared = await prepareImage(file);
         const id = newId();
-        const ext = prepared.originalExt.replace(/[^a-z0-9]/g, "") || "jpg";
-        const originalPath = `originals/${id}.${ext}`;
-        const displayPath = `derived/display/${id}.webp`;
-        const thumbPath = `derived/thumbs/${id}.webp`;
-        await Promise.all([
-          writeFileInDir(originalsDir, `${id}.${ext}`, file),
-          writeFileInDir(displayDir, `${id}.webp`, prepared.display),
-          writeFileInDir(thumbsDir, `${id}.webp`, prepared.thumb),
-        ]);
-        const exif = await readFileExif(file);
-        const photo: Photo = {
-          id,
-          originalName: file.name,
-          title: "",
-          caption: "",
-          takenAt: exif?.takenAt ?? new Date(file.lastModified).toISOString(),
-          tags: [],
-          rating: 0,
-          files: { original: originalPath, display: displayPath, thumb: thumbPath },
-          width: prepared.width,
-          height: prepared.height,
-          exif: exif?.camera || exif?.focalLength ? { camera: exif.camera, focalLength: exif.focalLength } : undefined,
-          ...(exif?.geo ? { geo: exif.geo } : {}),
-        };
-        const urls = await addPreviewUrl(handle, photo);
-        imported[index] = { photo, thumb: urls.thumb, display: urls.display };
+        if (isVideoFile(file)) {
+          const prepared = await prepareVideo(file);
+          const ext = prepared.originalExt.replace(/[^a-z0-9]/g, "") || "mp4";
+          const originalPath = `originals/${id}.${ext}`;
+          const displayPath = originalPath;
+          const thumbPath = `derived/thumbs/${id}.webp`;
+          await Promise.all([
+            writeFileInDir(originalsDir, `${id}.${ext}`, file),
+            writeFileInDir(thumbsDir, `${id}.webp`, prepared.thumb),
+          ]);
+          const photo: Photo = {
+            id,
+            kind: "video",
+            originalName: file.name,
+            title: "",
+            caption: "",
+            takenAt: new Date(file.lastModified).toISOString(),
+            tags: [],
+            rating: 0,
+            files: { original: originalPath, display: displayPath, thumb: thumbPath },
+            width: prepared.width,
+            height: prepared.height,
+          };
+          const urls = await addPreviewUrl(handle, photo);
+          imported[index] = { photo, thumb: urls.thumb, display: urls.display };
+        } else {
+          const prepared = await prepareImage(file);
+          const ext = prepared.originalExt.replace(/[^a-z0-9]/g, "") || "jpg";
+          const originalPath = `originals/${id}.${ext}`;
+          const displayPath = `derived/display/${id}.webp`;
+          const thumbPath = `derived/thumbs/${id}.webp`;
+          await Promise.all([
+            writeFileInDir(originalsDir, `${id}.${ext}`, file),
+            writeFileInDir(displayDir, `${id}.webp`, prepared.display),
+            writeFileInDir(thumbsDir, `${id}.webp`, prepared.thumb),
+          ]);
+          const exif = await readFileExif(file);
+          const photo: Photo = {
+            id,
+            kind: "image",
+            originalName: file.name,
+            title: "",
+            caption: "",
+            takenAt: exif?.takenAt ?? new Date(file.lastModified).toISOString(),
+            tags: [],
+            rating: 0,
+            files: { original: originalPath, display: displayPath, thumb: thumbPath },
+            width: prepared.width,
+            height: prepared.height,
+            exif: exif?.camera || exif?.focalLength ? { camera: exif.camera, focalLength: exif.focalLength } : undefined,
+            ...(exif?.geo ? { geo: exif.geo } : {}),
+          };
+          const urls = await addPreviewUrl(handle, photo);
+          imported[index] = { photo, thumb: urls.thumb, display: urls.display };
+        }
       } catch (err) {
         imported[index] = {
           error: `${file.name}: ${err instanceof Error ? err.message : "Import fehlgeschlagen"}`,
         };
       }
       finished += 1;
-      set({ importProgress: { current: finished, total: images.length, name: file.name }, error: null });
+      set({ importProgress: { current: finished, total: media.length, name: file.name }, error: null });
     });
 
     for (const item of imported) {
@@ -774,8 +803,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         displayUrls,
         tab: "photos",
         message: errors.length
-          ? `${images.length - errors.length} importiert, ${errors.length} fehlgeschlagen.`
-          : `${images.length} Bild${images.length === 1 ? "" : "er"} importiert.`,
+          ? `${media.length - errors.length} importiert, ${errors.length} fehlgeschlagen.`
+          : `${media.length} Datei${media.length === 1 ? "" : "en"} importiert.`,
         error: errors.length ? errors.slice(0, 4).join("\n") : null,
       });
     } catch (err) {

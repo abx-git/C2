@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Photo } from "@/lib/catalog";
+import { isVideoPhoto, type Photo } from "@/lib/catalog";
 
 type LightboxProps = {
   photos: Photo[];
@@ -52,7 +52,9 @@ export function Lightbox({
   enterFullscreen = false,
 }: LightboxProps) {
   const photo = photos[index];
+  const isVideo = photo ? isVideoPhoto(photo) : false;
   const rootRef = useRef<HTMLDivElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
   const [fullscreen, setFullscreen] = useState(false);
   const canFullscreen = typeof document !== "undefined" && fullscreenEnabled();
 
@@ -86,10 +88,15 @@ export function Lightbox({
   }, [photos.length]);
 
   useEffect(() => {
-    if (!playing || photos.length < 2) return;
+    const current = photos[index];
+    if (!playing || photos.length < 2 || (current && isVideoPhoto(current))) return;
     const timer = window.setTimeout(() => go(1), Math.max(1, intervalMs));
     return () => window.clearTimeout(timer);
-  }, [playing, intervalMs, index, go, photos.length]);
+  }, [playing, intervalMs, index, go, photos]);
+
+  useEffect(() => {
+    videoRef.current?.pause();
+  }, [index]);
 
   useEffect(() => {
     const onChange = () => setFullscreen(fullscreenElement() === rootRef.current);
@@ -126,7 +133,9 @@ export function Lightbox({
         if (fullscreenElement()) return;
         onCloseRef.current();
       }
+      const current = photos[indexRef.current];
       if (event.key === " " || event.key === "Spacebar") {
+        if (current && isVideoPhoto(current)) return;
         event.preventDefault();
         togglePlay();
       }
@@ -136,14 +145,18 @@ export function Lightbox({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [go, toggleFullscreen, togglePlay]);
+  }, [go, toggleFullscreen, togglePlay, photos]);
 
   if (!photo) return null;
 
   const title = photo.title.trim();
   const meta = [photo.caption, photo.exif?.camera, photo.exif?.focalLength].filter(Boolean).join(" · ");
-  const label = title || "Bild";
+  const label = title || (isVideo ? "Video" : "Bild");
   const fillScreen = fullscreen;
+  const displaySrc = resolveUrl(photo, "display");
+  const mediaStyle = fillScreen
+    ? { maxWidth: "100%", maxHeight: "100%" }
+    : { maxWidth: `min(100%, ${photo.width}px)`, maxHeight: `min(100%, ${photo.height}px)` };
 
   return (
     <div
@@ -167,7 +180,7 @@ export function Lightbox({
         </svg>
       </button>
       <div className="g-lightbox-tools">
-      {photos.length > 1 && onPlaying ? (
+      {photos.length > 1 && onPlaying && !isVideo ? (
         <button
           type="button"
           className="g-lightbox-play"
@@ -241,21 +254,33 @@ export function Lightbox({
         </button>
       ) : null}
       <div className="g-lightbox-stage">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          key={photo.id}
-          src={resolveUrl(photo, "display")}
-          alt={label}
-          draggable={false}
-          width={photo.width}
-          height={photo.height}
-          onDoubleClick={toggleFullscreen}
-          style={
-            fillScreen
-              ? { maxWidth: "100%", maxHeight: "100%" }
-              : { maxWidth: `min(100%, ${photo.width}px)`, maxHeight: `min(100%, ${photo.height}px)` }
-          }
-        />
+        {isVideo ? (
+          <video
+            ref={videoRef}
+            key={photo.id}
+            className="g-lightbox-video"
+            src={displaySrc}
+            controls
+            playsInline
+            preload="metadata"
+            width={photo.width}
+            height={photo.height}
+            onDoubleClick={toggleFullscreen}
+            style={mediaStyle}
+          />
+        ) : (
+          /* eslint-disable-next-line @next/next/no-img-element */
+          <img
+            key={photo.id}
+            src={displaySrc}
+            alt={label}
+            draggable={false}
+            width={photo.width}
+            height={photo.height}
+            onDoubleClick={toggleFullscreen}
+            style={mediaStyle}
+          />
+        )}
       </div>
       {photos.length > 1 ? (
         <button type="button" className="g-lightbox-nav next" onClick={() => go(1)} aria-label="Nächstes Bild">

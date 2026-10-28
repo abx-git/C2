@@ -172,6 +172,24 @@
   background: var(--g-line);
 }
 
+.theme-roadtrip .rt-video-badge {
+  position: absolute;
+  right: 0.55rem;
+  bottom: 0.55rem;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 0.65rem;
+  line-height: 1;
+  pointer-events: none;
+}
+
 .theme-roadtrip .rt-map {
   position: absolute;
   right: max(0.85rem, env(safe-area-inset-right, 0px));

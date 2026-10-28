@@ -247,13 +247,13 @@ export function PhotoLibrary() {
               disabled={!canWrite}
               onClick={() => inputRef.current?.click()}
             >
-              Bilder wählen
+              Bilder / MP4 wählen
             </button>
           </div>
           <input
             ref={inputRef}
             type="file"
-            accept="image/*"
+            accept="image/*,video/mp4,.mp4"
             multiple
             className="hidden"
             onChange={(event) => {
@@ -274,7 +274,7 @@ export function PhotoLibrary() {
           disabled={!canWrite}
           onClick={() => inputRef.current?.click()}
         >
-          Bilder hierher ziehen oder klicken, um Dateien zu wählen
+          Bilder oder MP4-Videos hierher ziehen oder klicken, um Dateien zu wählen
         </button>
       ) : (
         <div ref={workAreaRef} className="min-h-0 flex-1 overflow-auto">

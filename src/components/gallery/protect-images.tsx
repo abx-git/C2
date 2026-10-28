@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import { galleryThemeStyle, type Catalog, type Photo, type ProtectionCrypto } from "@/lib/catalog";
+import { galleryThemeStyle, isVideoPhoto, type Catalog, type Photo, type ProtectionCrypto } from "@/lib/catalog";
 import { publicAssetUrl } from "@/lib/catalog-source";
 import { decryptBytes, sessionPasswordKey, unlockGalleryKey } from "@/lib/image-protect";
 
@@ -69,6 +69,7 @@ export function useDecryptedUrls(
       for (const kind of ["display", "thumb"] as const) {
         const id = `${photo.id}:${kind}`;
         if (inflight.current.has(id)) continue;
+        if (kind === "display" && isVideoPhoto(photo)) continue;
         const path = kind === "thumb" ? photo.files.thumb : photo.files.display;
         const work = (async () => {
           const res = await fetch(publicAssetUrl(path, base));
@@ -87,6 +88,9 @@ export function useDecryptedUrls(
 
   return useCallback(
     (photo: Photo, kind: "thumb" | "display") => {
+      if (kind === "display" && isVideoPhoto(photo)) {
+        return publicAssetUrl(photo.files.display, base);
+      }
       if (!key) return publicAssetUrl(kind === "thumb" ? photo.files.thumb : photo.files.display, base);
       return urls[`${photo.id}:${kind}`] ?? "";
     },

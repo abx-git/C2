@@ -5,6 +5,7 @@ import {
   DEFAULT_LAYOUT,
   clampSlideshowInterval,
   galleryThemeStyle,
+  isVideoPhoto,
   type Catalog,
   type Photo,
 } from "@/lib/catalog";
@@ -20,7 +21,7 @@ type RoadtripAppProps = {
 };
 
 function photoLabel(photo: Photo): string {
-  return photo.title.trim() || photo.originalName || "Bild";
+  return photo.title.trim() || photo.originalName || (isVideoPhoto(photo) ? "Video" : "Bild");
 }
 
 export function RoadtripApp({ catalog, resolveUrl, className }: RoadtripAppProps) {
@@ -152,11 +153,13 @@ export function RoadtripApp({ catalog, resolveUrl, className }: RoadtripAppProps
 
   useEffect(() => {
     if (!playing || lightbox || photos.length < 2) return;
+    const current = photos[indexRef.current];
+    if (current && isVideoPhoto(current)) return;
     const timer = window.setInterval(() => {
       go((indexRef.current + 1) % photos.length);
     }, intervalMs);
     return () => window.clearInterval(timer);
-  }, [playing, lightbox, photos.length, intervalMs, go]);
+  }, [playing, lightbox, photos.length, intervalMs, go, index]);
 
   useEffect(() => {
     if (!wantFullscreen || lightbox) return;
@@ -320,6 +323,7 @@ export function RoadtripApp({ catalog, resolveUrl, className }: RoadtripAppProps
                 const near = Math.abs(i - index) <= 2;
                 const kind = near ? "display" : "thumb";
                 const src = Math.abs(i - index) <= 8 ? resolveUrl(photo, kind) : "";
+                const video = isVideoPhoto(photo);
                 return (
                   <button
                     key={photo.id}
@@ -327,7 +331,7 @@ export function RoadtripApp({ catalog, resolveUrl, className }: RoadtripAppProps
                     ref={(el) => {
                       cardsRef.current[i] = el;
                     }}
-                    className={`rt-card${active ? " is-active" : ""}`}
+                    className={`rt-card${active ? " is-active" : ""}${video ? " is-video" : ""}`}
                     style={
                       {
                         "--rt-w": Math.max(1, photo.width || 3),
@@ -342,14 +346,17 @@ export function RoadtripApp({ catalog, resolveUrl, className }: RoadtripAppProps
                     aria-label={photoLabel(photo)}
                   >
                     {src ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={src}
-                        alt={photoLabel(photo)}
-                        draggable={false}
-                        width={photo.width}
-                        height={photo.height}
-                      />
+                      <>
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={video ? resolveUrl(photo, "thumb") : src}
+                          alt={photoLabel(photo)}
+                          draggable={false}
+                          width={photo.width}
+                          height={photo.height}
+                        />
+                        {video ? <span className="rt-video-badge" aria-hidden="true">▶</span> : null}
+                      </>
                     ) : (
                       <span className="rt-card-slot" />
                     )}
