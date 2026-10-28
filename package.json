@@ -6,16 +6,22 @@
     "dev": "next dev",
     "build": "next build && node scripts/write-static-manifest.mjs",
     "build:static": "next build && node scripts/write-static-manifest.mjs",
+    "build:android": "NEXT_PUBLIC_BASE_PATH= npm run build:static && npx cap sync android",
+    "build:android:apk": "bash scripts/android-apk.sh",
+    "open:android": "npx cap open android",
     "export-public": "node scripts/export-public-from-workspace.mjs",
     "start": "npx --yes serve out -p 3000"
   },
   "dependencies": {
+    "@capacitor/android": "^7.6.9",
+    "@capacitor/core": "^7.6.9",
     "next": "^15.5.23",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "zustand": "^5.0.5"
   },
   "devDependencies": {
+    "@capacitor/cli": "^7.6.9",
     "@types/node": "^22.15.21",
     "@types/react": "^19.1.5",
     "@types/react-dom": "^19.1.5",

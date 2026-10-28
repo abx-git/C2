@@ -79,8 +79,9 @@ export function SiteTreeEditor() {
         />
       </label>
       <p className="mb-5 text-xs text-[var(--edit-muted)]">
-        Beispiel „rotterdam“ erscheint unter /rotterdam/. Den lokalen Ordner wählst du
-        im Editor unter „Zum Server“ (übergeordneter Ordner, z. B. c2.site) — nicht im Setup.
+        Leer = Server-Wurzel (z. B. likibox/). Mit Wert „rotterdam“ = likibox/rotterdam/. Auf dem Handy: bei
+        „Deploy-Ordner“ genau den lokalen Ordner wählen, dessen Inhalt dorthin soll — kein Extra-Unterordner
+        wird angelegt.
       </p>
       <label className="mb-3 block text-xs text-[var(--edit-muted)]">
         Server-Host

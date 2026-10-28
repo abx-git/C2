@@ -90,6 +90,7 @@ export function OsmMap({
   });
   const fitted = useRef(false);
   const drag = useRef<{ x: number; y: number; view: View } | null>(null);
+  const pinch = useRef<{ dist: number; zoom: number; cx: number; cy: number } | null>(null);
   const viewRef = useRef(view);
   viewRef.current = view;
   const markerKey = markers.map((item) => `${item.id}:${item.lat}:${item.lng}`).join("|");
@@ -203,12 +204,54 @@ export function OsmMap({
     if (!el) return;
     const onWheel = (event: WheelEvent) => {
       event.preventDefault();
+      event.stopPropagation();
       const rect = el.getBoundingClientRect();
       const delta = event.deltaY > 0 ? -1 : 1;
       setZoom(viewRef.current.zoom + delta, { x: event.clientX - rect.left, y: event.clientY - rect.top });
     };
+    const onTouchStart = (event: TouchEvent) => {
+      event.stopPropagation();
+      if (event.touches.length !== 2) {
+        pinch.current = null;
+        return;
+      }
+      drag.current = null;
+      const [a, b] = [event.touches[0]!, event.touches[1]!];
+      const rect = el.getBoundingClientRect();
+      pinch.current = {
+        dist: Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY),
+        zoom: viewRef.current.zoom,
+        cx: (a.clientX + b.clientX) / 2 - rect.left,
+        cy: (a.clientY + b.clientY) / 2 - rect.top,
+      };
+    };
+    const onTouchMove = (event: TouchEvent) => {
+      event.stopPropagation();
+      const start = pinch.current;
+      if (!start || event.touches.length !== 2) return;
+      event.preventDefault();
+      const [a, b] = [event.touches[0]!, event.touches[1]!];
+      const dist = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+      if (start.dist < 8) return;
+      const nextZoom = start.zoom + Math.log2(dist / start.dist);
+      setZoom(nextZoom, { x: start.cx, y: start.cy });
+    };
+    const onTouchEnd = (event: TouchEvent) => {
+      event.stopPropagation();
+      if (event.touches.length < 2) pinch.current = null;
+    };
     el.addEventListener("wheel", onWheel, { passive: false });
-    return () => el.removeEventListener("wheel", onWheel);
+    el.addEventListener("touchstart", onTouchStart, { passive: true });
+    el.addEventListener("touchmove", onTouchMove, { passive: false });
+    el.addEventListener("touchend", onTouchEnd, { passive: true });
+    el.addEventListener("touchcancel", onTouchEnd, { passive: true });
+    return () => {
+      el.removeEventListener("wheel", onWheel);
+      el.removeEventListener("touchstart", onTouchStart);
+      el.removeEventListener("touchmove", onTouchMove);
+      el.removeEventListener("touchend", onTouchEnd);
+      el.removeEventListener("touchcancel", onTouchEnd);
+    };
   }, [size.w, size.h]);
 
   return (
@@ -216,13 +259,16 @@ export function OsmMap({
       ref={rootRef}
       className={["rt-map-canvas", onPick ? "is-pick" : "", className].filter(Boolean).join(" ")}
       onPointerDown={(event) => {
+        event.stopPropagation();
         if (event.button !== 0) return;
         const target = event.target as HTMLElement | null;
         if (target?.closest(".rt-map-zoom, .rt-map-copy, a, button")) return;
+        pinch.current = null;
         (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
         drag.current = { x: event.clientX, y: event.clientY, view };
       }}
       onPointerMove={(event) => {
+        event.stopPropagation();
         const start = drag.current;
         if (!start) return;
         const dx = event.clientX - start.x;
@@ -236,6 +282,7 @@ export function OsmMap({
         });
       }}
       onPointerUp={(event) => {
+        event.stopPropagation();
         const start = drag.current;
         drag.current = null;
         if (!start || Math.hypot(event.clientX - start.x, event.clientY - start.y) > 6) return;
@@ -267,8 +314,10 @@ export function OsmMap({
         }
         if (bestId) onSelect(bestId);
       }}
-      onPointerCancel={() => {
+      onPointerCancel={(event) => {
+        event.stopPropagation();
         drag.current = null;
+        pinch.current = null;
       }}
     >
       {tiles.map((tile) => (
@@ -304,10 +353,26 @@ export function OsmMap({
         })}
       </svg>
       <div className="rt-map-zoom">
-        <button type="button" aria-label="Hineinzoomen" onClick={() => setZoom(view.zoom + 1)}>
+        <button
+          type="button"
+          aria-label="Hineinzoomen"
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={(event) => {
+            event.stopPropagation();
+            setZoom(view.zoom + 1);
+          }}
+        >
           +
         </button>
-        <button type="button" aria-label="Herauszoomen" onClick={() => setZoom(view.zoom - 1)}>
+        <button
+          type="button"
+          aria-label="Herauszoomen"
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={(event) => {
+            event.stopPropagation();
+            setZoom(view.zoom - 1);
+          }}
+        >
           −
         </button>
       </div>

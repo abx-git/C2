@@ -380,27 +380,25 @@ export function RoadtripApp({ catalog, resolveUrl, className }: RoadtripAppProps
               </button>
             </>
           ) : null}
+          {showMap ? (
+            <aside className="rt-map" aria-label="Route">
+              <OsmMap
+                markers={markers}
+                fitPoints={fitPoints}
+                activeId={
+                  current?.geo
+                    ? current.id
+                    : [...geoPhotos].reverse().find((photo) => traveledIds.has(photo.id))?.id
+                }
+                traveledIds={traveledIds}
+                onSelect={(id) => {
+                  const next = photos.findIndex((photo) => photo.id === id);
+                  if (next >= 0) openPhoto(next);
+                }}
+              />
+            </aside>
+          ) : null}
         </div>
-
-        {showMap ? (
-          <aside className="rt-map" aria-label="Route">
-            <OsmMap
-              className="h-full"
-              markers={markers}
-              fitPoints={fitPoints}
-              activeId={
-                current?.geo
-                  ? current.id
-                  : [...geoPhotos].reverse().find((photo) => traveledIds.has(photo.id))?.id
-              }
-              traveledIds={traveledIds}
-              onSelect={(id) => {
-                const next = photos.findIndex((photo) => photo.id === id);
-                if (next >= 0) openPhoto(next);
-              }}
-            />
-          </aside>
-        ) : null}
 
         <footer className="rt-meta">
           <div className="rt-meta-copy">

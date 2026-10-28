@@ -51,6 +51,13 @@ export function EditorShell() {
   const redoShortcut = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.userAgent) ? "⇧⌘Z" : "Strg+Y";
 
   useEffect(() => {
+    if (typeof window !== "undefined" && window.location.protocol === "file:") {
+      useEditorStore.setState({
+        error:
+          "Der Editor funktioniert nicht als lokale Datei (file://). Im C2-Ordner „npm run dev“ ausführen und http://localhost:3000 öffnen.",
+      });
+      return;
+    }
     void restoreWorkspace();
   }, [restoreWorkspace]);
 
@@ -100,16 +107,16 @@ export function EditorShell() {
 
   return (
     <div className="flex h-full max-h-full flex-col overflow-hidden">
-      <header className="relative z-20 flex shrink-0 items-center gap-4 border-b border-[var(--edit-line)] bg-[var(--edit-panel)] px-4 py-2">
-        <Link href="/" className="text-sm font-medium tracking-wide">
+      <header className="edit-chrome-header">
+        <Link href="/" className="shrink-0 text-sm font-medium tracking-wide">
           C2
         </Link>
-        <nav className="flex items-center gap-0.5">
+        <nav className="edit-chrome-nav">
           {TABS.map((item) => (
             <button
               key={item.id}
               type="button"
-              className={`edit-tab ${activeTab === item.id ? "is-active" : ""}`}
+              className={`edit-tab shrink-0 ${activeTab === item.id ? "is-active" : ""}`}
               onClick={() => {
                 if (status !== "ready") {
                   useEditorStore.setState({
@@ -124,10 +131,10 @@ export function EditorShell() {
             </button>
           ))}
         </nav>
-        <div className="ml-auto flex items-center gap-2">
+        <div className="edit-chrome-actions">
           <button
             type="button"
-            className="edit-btn"
+            className="edit-btn edit-btn-desktop"
             disabled={status !== "ready" || !canUndo}
             title={`Rückgängig (${undoShortcut})`}
             onClick={() => undo()}
@@ -136,7 +143,7 @@ export function EditorShell() {
           </button>
           <button
             type="button"
-            className="edit-btn"
+            className="edit-btn edit-btn-desktop"
             disabled={status !== "ready" || !canRedo}
             title={`Wiederholen (${redoShortcut})`}
             onClick={() => redo()}
@@ -172,12 +179,7 @@ export function EditorShell() {
             Katalog und Bilder werden geladen. Die Bibliothek erscheint, sobald die JSON-Dateien gelesen sind.
           </p>
         ) : status !== "ready" ? (
-          <ConnectCard
-            title="Projekt öffnen"
-            body="Katalog, Originale und Server-Verbindung liegen in diesem Ordner. Nichts geht auf den Server, bis Sie einen Deploy-Ordner erzeugen."
-            action="Projekt öffnen"
-            onAction={() => void connectWorkspace()}
-          />
+          <ProjectWelcome onNew={() => void connectWorkspace({ intent: "new" })} onOpen={() => void connectWorkspace({ intent: "open" })} />
         ) : activeTab === "photos" ? (
           <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
             <PhotoLibrary />
@@ -205,6 +207,70 @@ export function EditorShell() {
           </div>
         )}
       </main>
+    </div>
+  );
+}
+
+function ProjectWelcome({ onNew, onOpen }: { onNew: () => void; onOpen: () => void }) {
+  const [fsHint, setFsHint] = useState<string | null>(null);
+  const pickerOk = supportsDirectoryPicker();
+
+  useEffect(() => {
+    if (pickerOk) {
+      setFsHint(null);
+      return;
+    }
+    void isBrave().then((brave) => {
+      setFsHint(
+        brave
+          ? BRAVE_FS_HELP
+          : "Ordnerzugriff ist in diesem Fenster nicht verfügbar. Brave, Chrome oder Edge verwenden und die Seite direkt öffnen.",
+      );
+    });
+  }, [pickerOk]);
+
+  return (
+    <div className="mx-auto mt-10 max-w-xl rounded-2xl border border-[var(--edit-line)] bg-[var(--edit-panel)] p-8">
+      <h1 className="mb-2 text-lg font-medium">Willkommen bei C2</h1>
+      <p className="mb-6 text-sm leading-relaxed text-[var(--edit-muted)]">
+        Alles Bearbeitete liegt in einem <strong className="font-medium text-[var(--edit-ink)]">Projektordner</strong> auf
+        Ihrem Rechner (Originale, Katalog, Einstellungen). Die öffentliche Website entsteht separat über einen{" "}
+        <strong className="font-medium text-[var(--edit-ink)]">Deploy-Ordner</strong> — dorthin geht erst etwas online,
+        wenn Sie das bewusst auslösen.
+      </p>
+      {fsHint ? (
+        <pre className="mb-6 whitespace-pre-wrap rounded-lg border border-[var(--edit-line)] bg-white px-3 py-3 text-xs leading-relaxed text-[var(--edit-ink)]">
+          {fsHint}
+        </pre>
+      ) : null}
+      <div className="mb-8 flex flex-col gap-3 sm:flex-row">
+        <button type="button" className="edit-btn-primary edit-btn flex-1" disabled={!pickerOk} onClick={onNew}>
+          Neues Projekt anlegen
+        </button>
+        <button type="button" className="edit-btn flex-1" disabled={!pickerOk} onClick={onOpen}>
+          Bestehendes Projekt öffnen
+        </button>
+      </div>
+      <p className="mb-3 text-xs font-medium uppercase tracking-wide text-[var(--edit-muted)]">Ablauf</p>
+      <ol className="edit-welcome-steps mb-2 space-y-2 text-sm leading-relaxed text-[var(--edit-muted)]">
+        <li>
+          <span className="font-medium text-[var(--edit-ink)]">Projekt</span> — leeren Ordner wählen (neu) oder
+          vorhandenen Ordner öffnen
+        </li>
+        <li>
+          <span className="font-medium text-[var(--edit-ink)]">Bilder</span> — Fotos importieren, Tags und Texte pflegen
+        </li>
+        <li>
+          <span className="font-medium text-[var(--edit-ink)]">Struktur</span> — Seiten und Galerie-Aufbau festlegen
+        </li>
+        <li>
+          <span className="font-medium text-[var(--edit-ink)]">Deploy-Ordner</span> — fertige Website lokal erzeugen, dann{" "}
+          <span className="font-medium text-[var(--edit-ink)]">Zum Server</span>
+        </li>
+      </ol>
+      <p className="text-xs text-[var(--edit-muted)]">
+        Noch kein Projekt? „Neues Projekt anlegen“ und einen leeren Ordner wählen — Sie müssen nichts von Hand anlegen.
+      </p>
     </div>
   );
 }

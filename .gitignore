@@ -7,6 +7,7 @@
 /public/data/
 /data/
 /.cache/
+/.jdk/
 /workspace/
 /dist/
 .DS_Store
@@ -19,3 +20,10 @@ npm-debug.log*
 .cursor/
 mutagen.yml
 **/__pycache__/
+android/.gradle/
+android/app/build/
+android/build/
+android/capacitor-cordova-android-plugins/
+*.apk
+*.aab
+local.properties

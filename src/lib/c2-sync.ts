@@ -1,5 +1,8 @@
 import { normalizePublishPath } from "@/lib/catalog";
+import { isCapacitorNative } from "@/lib/c2-fs";
+import { C2Sync, hasNativeSync } from "@/lib/c2-sync-native";
 import { emptyProjectSync, projectSyncForTransfer, type ProjectSync } from "@/lib/project-sync";
+import { safUriOf } from "@/lib/saf-directory";
 
 const SYNC_URL = "http://127.0.0.1:17843";
 
@@ -60,6 +63,15 @@ function asStatus(raw: Record<string, unknown>): SyncStatus {
 }
 
 export async function fetchSyncStatus(probe = false, publishPath = ""): Promise<SyncStatus | null> {
+  if (hasNativeSync()) {
+    try {
+      const slug = normalizePublishPath(publishPath);
+      const raw = await C2Sync.status({ probe, subdir: slug });
+      return asStatus(raw as unknown as Record<string, unknown>);
+    } catch {
+      return null;
+    }
+  }
   const ctrl = new AbortController();
   const timer = window.setTimeout(() => ctrl.abort(), probe ? 20000 : 2500);
   try {
@@ -81,11 +93,35 @@ export async function fetchSyncStatus(probe = false, publishPath = ""): Promise<
 export async function runSyncTransfer(
   publishPath = "",
   project?: ProjectSync | null,
-): Promise<{ ok: boolean; error: string; via?: "helper" | "app" }> {
+): Promise<{ ok: boolean; error: string; via?: "helper" | "app" | "native"; remote?: string; fileCount?: number }> {
+  const slug = normalizePublishPath(publishPath);
+  if (hasNativeSync()) {
+    try {
+      // Auf Android: Ziel nur aus Sync-Setup (likibox) + publishPath — nicht aus data/sync.json.
+      const body = await C2Sync.transfer({ subdir: slug });
+      if (body.ok === true) {
+        return {
+          ok: true,
+          error: "",
+          via: "native",
+          remote: typeof body.remote === "string" ? body.remote : undefined,
+          fileCount: typeof body.fileCount === "number" ? body.fileCount : undefined,
+        };
+      }
+      return {
+        ok: false,
+        error: typeof body.error === "string" && body.error.trim() ? body.error : "Übertragung fehlgeschlagen.",
+      };
+    } catch (err) {
+      return {
+        ok: false,
+        error: err instanceof Error ? err.message : "Übertragung fehlgeschlagen.",
+      };
+    }
+  }
   const ctrl = new AbortController();
   const timer = window.setTimeout(() => ctrl.abort(), 30 * 60 * 1000);
   try {
-    const slug = normalizePublishPath(publishPath);
     const res = await fetch(`${SYNC_URL}/transfer`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -110,9 +146,20 @@ export async function runSyncTransfer(
   }
 }
 
+export async function rememberDeployDirectory(handle: FileSystemDirectoryHandle): Promise<void> {
+  if (!hasNativeSync()) return;
+  const uri = safUriOf(handle);
+  if (!uri) return;
+  try {
+    await C2Sync.setDeployDirectory({ uri, name: handle.name });
+  } catch {
+    /* best-effort */
+  }
+}
+
 /** Startet die Mac/Windows-App, die rclone/Mutagen auf den Likibox-Server ausführt. */
 export function startProtocolTransfer(publishPath = ""): void {
-  if (typeof document === "undefined") return;
+  if (typeof document === "undefined" || isCapacitorNative()) return;
   const slug = normalizePublishPath(publishPath);
   const url = slug
     ? `c2sync://transfer?subdir=${encodeURIComponent(slug)}`
@@ -141,6 +188,11 @@ function pathParentLeaf(path: string | null | undefined): string {
 /** Hinweis ohne Rohpfad, wenn der öffentliche Ordner für ein Unterprojekt noch fehlt. */
 export function missingDeployHint(status: SyncStatus | null, publishPath = ""): string {
   const slug = normalizePublishPath(publishPath);
+  if (hasNativeSync()) {
+    return slug
+      ? `Noch kein Deploy-Ordner. „Deploy-Ordner“ tippen und den lokalen Ordner wählen, dessen Inhalt nach …/${slug}/ soll.`
+      : "Noch kein Deploy-Ordner. „Deploy-Ordner“ tippen und den lokalen Ordner für die Website wählen.";
+  }
   const parent = pathParentLeaf(status?.deploy);
   const folder = pathLeaf(status?.deploy) || (slug ? `${slug}.deploy` : "");
   if (slug) {
@@ -151,6 +203,9 @@ export function missingDeployHint(status: SyncStatus | null, publishPath = ""): 
 }
 
 export function wrongDeployFolderHint(status: SyncStatus | null, publishPath = ""): string {
+  if (hasNativeSync()) {
+    return "Deploy-Ordner fehlt noch. Bitte „Deploy-Ordner“ ausführen und einen Ordner wählen.";
+  }
   const slug = normalizePublishPath(publishPath);
   const parent = pathParentLeaf(status?.deploy);
   if (slug) {
@@ -160,12 +215,22 @@ export function wrongDeployFolderHint(status: SyncStatus | null, publishPath = "
   return "Der gewählte Ordner ist nicht der Deploy-Ordner der Hauptgalerie.";
 }
 
+export function deployFolderPickHint(publishPath = "", remoteBase = "likibox"): string {
+  const slug = normalizePublishPath(publishPath);
+  const base = (remoteBase || "likibox").replace(/^\/+|\/+$/g, "") || "likibox";
+  if (slug) {
+    return `Als Nächstes einen leeren (oder bestehenden) lokalen Ordner wählen. Dorthin wird die Website geschrieben und später nach ${base}/${slug}/ hochgeladen — nicht den Projektordner mit originals/.`;
+  }
+  return `Als Nächstes einen lokalen Ordner wählen. Dorthin wird die Website geschrieben und später nach ${base}/ hochgeladen — nicht den Projektordner mit originals/.`;
+}
+
 function isLoopbackHost(hostname: string): boolean {
   return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]";
 }
 
 function pageCannotReachLocalHelper(): boolean {
   if (typeof window === "undefined") return false;
+  if (isCapacitorNative()) return false;
   const { protocol, hostname } = window.location;
   return protocol === "https:" && !isLoopbackHost(hostname);
 }
@@ -176,6 +241,12 @@ export function describeSync(
   publishPath = "",
 ): { label: string; tone: "ok" | "warn" | "err" } {
   if (!status) {
+    if (hasNativeSync()) {
+      return {
+        label: "Native Sync nicht erreichbar. App neu starten.",
+        tone: "err",
+      };
+    }
     if (pageCannotReachLocalHelper()) {
       return {
         label: "Ziel ist der Likibox-Server. Dieser Tab spricht den Helfer nicht direkt an — „Zum Server“ startet die Übertragung auf diesem Mac.",
@@ -189,7 +260,9 @@ export function describeSync(
   }
   if (!status.configured) {
     return {
-      label: "Sync nicht eingerichtet — Setup ausführen und Deploy-Ordner sowie Host angeben.",
+      label: hasNativeSync()
+        ? "Sync nicht eingerichtet — unter „Sync einrichten“ Host, Benutzer, Passwort und Remote-Pfad angeben."
+        : "Sync nicht eingerichtet — Setup ausführen und Deploy-Ordner sowie Host angeben.",
       tone: "err",
     };
   }
@@ -226,7 +299,7 @@ export function describeSync(
   const remote = project?.remote ? (slug ? `${base}/${slug}` : base) : status.remote;
   const host = project?.host || status.host;
   const target = [host, remote].filter(Boolean).join(":");
-  const method = (project?.method || status.method) === "rclone" ? "SFTP" : "Mutagen";
+  const method = (project?.method || status.method) === "rclone" || hasNativeSync() ? "SFTP" : "Mutagen";
   return {
     label: target ? `Bereit für den Likibox-Server (${method} → ${target})` : `Bereit für den Likibox-Server (${method})`,
     tone: "ok",

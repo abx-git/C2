@@ -1,9 +1,21 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { SyncSetupDialog } from "@/components/editor/sync-setup-dialog";
 import { appBase } from "@/lib/app-base";
 import { normalizePublishPath } from "@/lib/catalog";
-import { describeSync, fetchSyncStatus, missingDeployHint, runSyncTransfer, startProtocolTransfer, wrongDeployFolderHint, type SyncStatus } from "@/lib/c2-sync";
+import {
+  deployFolderPickHint,
+  describeSync,
+  fetchSyncStatus,
+  missingDeployHint,
+  rememberDeployDirectory,
+  runSyncTransfer,
+  startProtocolTransfer,
+  wrongDeployFolderHint,
+  type SyncStatus,
+} from "@/lib/c2-sync";
+import { hasNativeSync } from "@/lib/c2-sync-native";
 import { writeDeployFolder } from "@/lib/deploy";
 import { pickDirectory, supportsDirectoryPicker } from "@/lib/workspace";
 import { useEditorStore } from "@/store/editor-store";
@@ -21,10 +33,12 @@ export function DeployButton() {
   const dirty = useEditorStore((s) => s.dirty);
   const publishPath = catalog.site.publishPath ?? "";
   const [open, setOpen] = useState(false);
+  const [setupOpen, setSetupOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState<{ current: number; total: number; skipped: number } | null>(null);
   const [sync, setSync] = useState<SyncStatus | null | undefined>(undefined);
   const rootRef = useRef<HTMLDivElement>(null);
+  const native = hasNativeSync();
 
   useEffect(() => {
     let cancelled = false;
@@ -60,11 +74,22 @@ export function DeployButton() {
     useEditorStore.setState({ message: text });
   };
 
+  const refreshSync = async (probe = false) => {
+    const next = await fetchSyncStatus(probe, publishPath);
+    setSync(next);
+    return next;
+  };
+
   if (status !== "ready") {
     return (
-      <button type="button" className="edit-btn" onClick={() => void connectWorkspace()}>
-        Projekt öffnen
-      </button>
+      <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+        <button type="button" className="edit-btn edit-btn-primary" onClick={() => void connectWorkspace({ intent: "new" })}>
+          Neues Projekt
+        </button>
+        <button type="button" className="edit-btn" onClick={() => void connectWorkspace({ intent: "open" })}>
+          Öffnen
+        </button>
+      </div>
     );
   }
 
@@ -81,8 +106,13 @@ export function DeployButton() {
   const runDeploy = async () => {
     setOpen(false);
     setProgress(null);
+    const remoteBase = projectSync.remote || sync?.remote || "likibox";
+    setMessage(deployFolderPickHint(publishPath, remoteBase));
     const dest = await pickDirectory("readwrite", { id: "c2-deploy-dest", startIn: "documents" });
-    if (!dest) return;
+    if (!dest) {
+      setMessage("Abgebrochen.");
+      return;
+    }
     const workspace = getWorkspaceHandle();
     if (!workspace) {
       setMessage("Kein Projekt geöffnet.");
@@ -99,19 +129,23 @@ export function DeployButton() {
         password: useEditorStore.getState().galleryPassword,
         onProgress: setProgress,
       });
+      await rememberDeployDirectory(dest);
+      setSync(await fetchSyncStatus(false, publishPath));
+      const slug = normalizePublishPath(publishPath);
+      const target = slug
+        ? `${(remoteBase || "likibox").replace(/\/+$/, "")}/${slug}/`
+        : `${(remoteBase || "likibox").replace(/\/+$/, "")}/`;
       const appNote = result.copiedApp
-        ? "Deploy-Ordner geschrieben."
-        : "Nur JSON und Bilder geschrieben. Einmal „npm run build:static“, dann erneut deployen.";
+        ? `Website nach „${dest.name}“ geschrieben (App-Dateien + Bilder — deshalb viele Dateien beim Upload).`
+        : `Nur Daten nach „${dest.name}“ geschrieben. Einmal „npm run build:static“, dann erneut deployen.`;
       const extra = [
         result.mode === "roadtrip" ? "Roadtrip" : "Galerie",
         `${result.photoCount} Bild${result.photoCount === 1 ? "" : "er"}`,
         result.geoCount ? `${result.geoCount} GPS-Punkte` : null,
         result.watermarked ? "Wasserzeichen" : null,
         result.encrypted ? "verschlüsselt" : null,
-        result.skipped ? `${result.skipped} unverändert` : null,
-        result.publishPath ? `unter /${result.publishPath}/` : null,
-        result.folderName ? `Ordner ${result.folderName}` : null,
-        syncReady ? "Danach „Zum Server“." : null,
+        `Server-Ziel ${target}`,
+        syncReady || hasNativeSync() ? "Als Nächstes „Zum Server“." : null,
       ]
         .filter(Boolean)
         .join(" · ");
@@ -124,16 +158,56 @@ export function DeployButton() {
     }
   };
 
+  const writeDeployTo = async (dest: FileSystemDirectoryHandle) => {
+    const workspace = getWorkspaceHandle();
+    if (!workspace) {
+      setMessage("Kein Projekt geöffnet.");
+      return false;
+    }
+    setProgress(null);
+    await saveCatalog(true);
+    await writeDeployFolder({
+      dest,
+      catalog,
+      workspace,
+      originBase: appBase(),
+      password: useEditorStore.getState().galleryPassword,
+      onProgress: setProgress,
+    });
+    await rememberDeployDirectory(dest);
+    return true;
+  };
+
   const runServer = async () => {
     setOpen(false);
     setBusy(true);
-    setMessage("Übertrage auf den Likibox-Server…");
     try {
+      const slug = normalizePublishPath(publishPath);
+      const serverTarget = slug ? `likibox/${slug}/` : "likibox/";
+      const remoteBase = projectSync.remote || sync?.remote || "likibox";
+
+      // Ordnerdialog muss direkt nach dem Klick kommen — vor Sync-Probe (20 s).
+      if (sync?.configured && sync.deployExists === false) {
+        setMessage(deployFolderPickHint(publishPath, remoteBase));
+        const dest = await pickDirectory("readwrite", { id: "c2-deploy-dest", startIn: "documents" });
+        if (!dest) {
+          setMessage("Abgebrochen.");
+          return;
+        }
+        if (!(await writeDeployTo(dest))) return;
+      }
+
+      if (native) {
+        setMessage(`Upload nach ${serverTarget} … (App-Dateien + Bilder, kann etwas dauern)`);
+      } else {
+        setMessage("Übertrage auf den Likibox-Server…");
+      }
       let live = await fetchSyncStatus(true, publishPath);
       setSync(live);
       const view = describeSync(live, projectSync, publishPath);
       if (live && !live.configured) {
         setMessage(view.label);
+        if (native) setSetupOpen(true);
         return;
       }
       if (live?.reachable === false) {
@@ -141,8 +215,11 @@ export function DeployButton() {
         return;
       }
       if (!live) {
+        if (native) {
+          setMessage("Native Sync nicht erreichbar. App neu starten.");
+          return;
+        }
         startProtocolTransfer(publishPath);
-        const slug = normalizePublishPath(publishPath);
         setMessage(
           slug
             ? `Übertragung auf den Likibox-Server unter /${slug}/ gestartet. Falls der Browser fragt: C2 Sync öffnen.`
@@ -151,40 +228,18 @@ export function DeployButton() {
         return;
       }
       if (!live.deployExists) {
-        const workspace = getWorkspaceHandle();
-        if (!workspace) {
-          setMessage("Kein Projekt geöffnet.");
-          return;
-        }
-        const expected = live;
-        setMessage(missingDeployHint(expected, publishPath));
-        const dest = await pickDirectory("readwrite", { id: "c2-deploy-dest", startIn: "documents" });
-        if (!dest) {
-          setMessage("Abgebrochen.");
-          return;
-        }
-        setProgress(null);
-        await saveCatalog(true);
-        await writeDeployFolder({
-          dest,
-          catalog,
-          workspace,
-          originBase: appBase(),
-          password: useEditorStore.getState().galleryPassword,
-          onProgress: setProgress,
-        });
-        live = await fetchSyncStatus(false, publishPath);
-        setSync(live);
-        if (!live?.deployExists) {
-          setMessage(wrongDeployFolderHint(expected, publishPath));
-          return;
-        }
+        setMessage(
+          `${missingDeployHint(live, publishPath)} Bitte zuerst „Deploy-Ordner“ wählen, danach erneut „Zum Server“.`,
+        );
+        return;
       }
       const result = await runSyncTransfer(publishPath, projectSync);
       setSync(await fetchSyncStatus(false, publishPath));
-      const slug = normalizePublishPath(publishPath);
-      const remoteOk =
-        slug ? `Galerie ist auf dem Likibox-Server unter /${slug}/.` : "Galerie ist auf dem Likibox-Server.";
+      const remoteOk = result.remote
+        ? `${result.fileCount ?? "?"} Dateien nach ${result.remote}/ hochgeladen.`
+        : slug
+          ? `Galerie ist auf dem Likibox-Server unter /${slug}/.`
+          : "Galerie ist auf dem Likibox-Server.";
       const launched =
         slug
           ? `Übertragung auf den Likibox-Server unter /${slug}/ gestartet. Falls der Browser fragt: C2 Sync öffnen.`
@@ -199,91 +254,106 @@ export function DeployButton() {
   };
 
   return (
-    <div className="edit-menu" ref={rootRef}>
-      <button
-        type="button"
-        className="edit-menu-trigger"
-        disabled={busy}
-        aria-expanded={open}
-        aria-haspopup="menu"
-        onClick={() => setOpen((value) => !value)}
-      >
-        <span className="max-w-[10rem] truncate">{busy ? busyLabel : workspaceLabel || "Projekt"}</span>
-        {dirty && !busy ? <span className="edit-menu-dot" title="Ungespeichert" /> : null}
-        {syncBad && !busy ? <span className="edit-menu-dot is-err" title={syncView?.label} /> : null}
-        <span aria-hidden="true">▾</span>
-      </button>
-      {open ? (
-        <div className="edit-menu-panel" role="menu">
-          <button
-            type="button"
-            role="menuitem"
-            title={openShortcut}
-            onClick={() => {
-              setOpen(false);
-              void connectWorkspace();
-            }}
-          >
-            Projekt öffnen
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            disabled={busy}
-            title={saveShortcut}
-            onClick={() => {
-              setOpen(false);
-              void saveCatalog(true).then(() => setMessage("Projekt gespeichert."));
-            }}
-          >
-            Speichern
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            disabled={busy}
-            title={saveAsShortcut}
-            onClick={() => {
-              setOpen(false);
-              void saveProjectAs();
-            }}
-          >
-            Speichern unter
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            onClick={() => {
-              setOpen(false);
-              disconnect();
-            }}
-          >
-            Trennen
-          </button>
-          <div className="edit-menu-sep" />
-          <button type="button" role="menuitem" disabled={busy} onClick={() => void runDeploy()}>
-            Deploy-Ordner
-          </button>
-          <button type="button" role="menuitem" disabled={busy} onClick={() => void runServer()}>
-            Zum Server
-          </button>
-          <div className="edit-menu-sep" />
-          {syncView ? <p className="edit-menu-note">{syncView.label}</p> : null}
-          <button
-            type="button"
-            role="menuitem"
-            onClick={() => {
-              setOpen(false);
-              setMessage(
-                "Der Helfer startet nach dem Anmelden selbst. Nur wenn er fehlt: einmal setup.command (Mac) bzw. setup.cmd (Windows).",
-              );
-            }}
-          >
-            Sync einrichten
-          </button>
-          {!supportsDirectoryPicker() ? <p className="edit-menu-note">Chrome oder Edge nötig.</p> : null}
-        </div>
+    <>
+      <div className="edit-menu" ref={rootRef}>
+        <button
+          type="button"
+          className="edit-menu-trigger"
+          disabled={busy}
+          aria-expanded={open}
+          aria-haspopup="menu"
+          onClick={() => setOpen((value) => !value)}
+        >
+          <span className="max-w-[10rem] truncate">{busy ? busyLabel : workspaceLabel || "Projekt"}</span>
+          {dirty && !busy ? <span className="edit-menu-dot" title="Ungespeichert" /> : null}
+          {syncBad && !busy ? <span className="edit-menu-dot is-err" title={syncView?.label} /> : null}
+          <span aria-hidden="true">▾</span>
+        </button>
+        {open ? (
+          <div className="edit-menu-panel" role="menu">
+            <button
+              type="button"
+              role="menuitem"
+              title={openShortcut}
+              onClick={() => {
+                setOpen(false);
+                void connectWorkspace();
+              }}
+            >
+              Projekt öffnen
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              disabled={busy}
+              title={saveShortcut}
+              onClick={() => {
+                setOpen(false);
+                void saveCatalog(true).then(() => setMessage("Projekt gespeichert."));
+              }}
+            >
+              Speichern
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              disabled={busy}
+              title={saveAsShortcut}
+              onClick={() => {
+                setOpen(false);
+                void saveProjectAs();
+              }}
+            >
+              Speichern unter
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setOpen(false);
+                disconnect();
+              }}
+            >
+              Trennen
+            </button>
+            <div className="edit-menu-sep" />
+            <button type="button" role="menuitem" disabled={busy} onClick={() => void runDeploy()}>
+              Deploy-Ordner
+            </button>
+            <button type="button" role="menuitem" disabled={busy} onClick={() => void runServer()}>
+              Zum Server
+            </button>
+            <div className="edit-menu-sep" />
+            {syncView ? <p className="edit-menu-note">{syncView.label}</p> : null}
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setOpen(false);
+                if (native) {
+                  setSetupOpen(true);
+                  return;
+                }
+                setMessage(
+                  "Der Helfer startet nach dem Anmelden selbst. Nur wenn er fehlt: einmal setup.command (Mac) bzw. setup.cmd (Windows).",
+                );
+              }}
+            >
+              Sync einrichten
+            </button>
+            {!supportsDirectoryPicker() ? <p className="edit-menu-note">Chrome oder Edge nötig.</p> : null}
+          </div>
+        ) : null}
+      </div>
+      {native ? (
+        <SyncSetupDialog
+          open={setupOpen}
+          onClose={() => setSetupOpen(false)}
+          onSaved={() => {
+            void refreshSync(true).then(() => setMessage("Sync gespeichert."));
+          }}
+        />
       ) : null}
-    </div>
+    </>
   );
 }

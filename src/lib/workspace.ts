@@ -1,3 +1,12 @@
+import { isCapacitorNative } from "@/lib/c2-fs";
+import {
+  clearPersistedSafDirectory,
+  isSafHandle,
+  loadPersistedSafDirectory,
+  persistSafDirectory,
+  pickSafDirectory,
+} from "@/lib/saf-directory";
+
 const IDB_NAME = "c2-workspace";
 const IDB_STORE = "handles";
 const IDB_KEY = "workspace-folder";
@@ -5,10 +14,37 @@ const IDB_KEY = "workspace-folder";
 export const WORKSPACE_DIRS = ["originals", "derived/display", "derived/thumbs", "data"] as const;
 
 export function supportsDirectoryPicker(): boolean {
-  return typeof window !== "undefined" && typeof window.showDirectoryPicker === "function";
+  if (typeof window === "undefined") return false;
+  if (isCapacitorNative()) return true;
+  return typeof window.showDirectoryPicker === "function";
+}
+
+/** Lesbare Meldung für Browser-Ordnerdialog (NotAllowedError, file://, Safari …). */
+export function formatDirectoryPickerError(err: unknown): string {
+  if (err instanceof DOMException) {
+    if (err.name === "AbortError") return "";
+    if (
+      err.name === "NotAllowedError" ||
+      /not allowed|nicht erlaubt|operation not permitted|vorgang nicht erlaubt/i.test(err.message)
+    ) {
+      return [
+        "Ordnerzugriff vom Browser blockiert.",
+        "Bitte erneut über den Menü-Button klicken (nicht nur Tastenkürzel),",
+        "Chrome oder Edge verwenden und die Seite unter http://localhost:3000 öffnen — nicht als file://-Datei.",
+        "Falls der Dialog nach „Zum Server“ fehlt: zuerst „Deploy-Ordner“ wählen.",
+      ].join(" ");
+    }
+    if (err.name === "SecurityError") {
+      return "Ordnerzugriff nur über http://localhost oder https — nicht als lokale Datei (file://) öffnen.";
+    }
+    if (err.message.trim()) return err.message;
+  }
+  if (err instanceof Error && err.message.trim()) return err.message;
+  return "Ordner konnte nicht geöffnet werden.";
 }
 
 export async function queryWriteAccess(handle: FileSystemDirectoryHandle): Promise<boolean> {
+  if (isSafHandle(handle)) return true;
   if (!handle.queryPermission) return false;
   try {
     const state = await handle.queryPermission({ mode: "readwrite" });
@@ -24,6 +60,7 @@ export async function queryWriteAccess(handle: FileSystemDirectoryHandle): Promi
 }
 
 export async function queryReadAccess(handle: FileSystemDirectoryHandle): Promise<boolean> {
+  if (isSafHandle(handle)) return true;
   if (!handle.queryPermission) return true;
   try {
     const state = await handle.queryPermission({ mode: "read" });
@@ -51,9 +88,16 @@ export async function pickDirectory(
   mode: "read" | "readwrite" = "readwrite",
   opts?: { id?: string; startIn?: DirectoryPickerStart },
 ): Promise<FileSystemDirectoryHandle | null> {
-  if (!supportsDirectoryPicker() || typeof window.showDirectoryPicker !== "function") {
-    return null;
+  if (!supportsDirectoryPicker()) return null;
+  if (isCapacitorNative()) {
+    try {
+      return await pickSafDirectory();
+    } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") return null;
+      throw err;
+    }
   }
+  if (typeof window.showDirectoryPicker !== "function") return null;
   try {
     return await window.showDirectoryPicker({
       mode,
@@ -62,7 +106,7 @@ export async function pickDirectory(
     });
   } catch (err) {
     if (err instanceof DOMException && err.name === "AbortError") return null;
-    throw err;
+    throw new Error(formatDirectoryPickerError(err));
   }
 }
 
@@ -332,6 +376,14 @@ function openIdb(): Promise<IDBDatabase> {
 }
 
 export async function saveDirectoryHandle(handle: FileSystemDirectoryHandle): Promise<void> {
+  if (isSafHandle(handle)) {
+    try {
+      await persistSafDirectory(handle);
+    } catch {
+      /* persistence is best-effort */
+    }
+    return;
+  }
   try {
     const db = await openIdb();
     await new Promise<void>((resolve, reject) => {
@@ -347,6 +399,13 @@ export async function saveDirectoryHandle(handle: FileSystemDirectoryHandle): Pr
 }
 
 export async function loadDirectoryHandle(): Promise<FileSystemDirectoryHandle | null> {
+  if (isCapacitorNative()) {
+    try {
+      return await loadPersistedSafDirectory();
+    } catch {
+      return null;
+    }
+  }
   try {
     const db = await openIdb();
     const handle = await new Promise<FileSystemDirectoryHandle | null>((resolve, reject) => {
@@ -363,6 +422,14 @@ export async function loadDirectoryHandle(): Promise<FileSystemDirectoryHandle |
 }
 
 export async function clearDirectoryHandle(): Promise<void> {
+  if (isCapacitorNative()) {
+    try {
+      await clearPersistedSafDirectory();
+    } catch {
+      /* ignore */
+    }
+    return;
+  }
   try {
     const db = await openIdb();
     await new Promise<void>((resolve, reject) => {

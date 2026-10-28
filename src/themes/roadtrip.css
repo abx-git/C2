@@ -1,13 +1,12 @@
 .theme-roadtrip {
   position: relative;
   --rt-map: min(33vmin, 18.75rem);
-  --rt-stage-h: 60dvh;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto minmax(0, 1fr) auto;
-  height: 100dvh;
-  min-height: 100dvh;
-  max-height: 100dvh;
+  height: 100%;
+  min-height: 0;
+  max-height: 100%;
   overflow: hidden;
   background: var(--g-bg);
   color: var(--g-ink);
@@ -18,9 +17,9 @@
 .theme-gallery-v1.theme-roadtrip.has-map {
   grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto minmax(0, 1fr) auto;
-  height: 100dvh;
-  min-height: 100dvh;
-  max-height: 100dvh;
+  height: 100%;
+  min-height: 0;
+  max-height: 100%;
 }
 
 .theme-roadtrip .rt-head {
@@ -46,6 +45,11 @@
   display: flex;
   align-items: stretch;
   background: var(--g-bg);
+  overflow: hidden;
+}
+
+.theme-roadtrip.has-map .rt-stream-wrap {
+  padding-bottom: calc(var(--rt-map) + 1.25rem);
 }
 
 .theme-roadtrip .rt-meta {
@@ -55,9 +59,10 @@
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
-  padding: 0.75rem 1.25rem 1rem;
+  padding: 0.75rem 1.25rem max(1rem, env(safe-area-inset-bottom, 0px));
   background: var(--g-bg);
   font-weight: 400;
+  flex-shrink: 0;
 }
 
 .theme-roadtrip .rt-title {
@@ -105,7 +110,7 @@
 
 .theme-roadtrip .rt-stream {
   display: flex;
-  align-items: stretch;
+  align-items: center;
   gap: 1.5rem;
   width: 100%;
   height: 100%;
@@ -135,9 +140,10 @@
   box-sizing: border-box;
   scroll-snap-align: center;
   scroll-snap-stop: always;
-  height: 100%;
-  width: calc(var(--rt-stage-h) * var(--rt-w, 3) / var(--rt-h, 2));
-  max-width: 92vw;
+  height: auto;
+  max-height: 100%;
+  width: min(92vw, calc(var(--rt-stage-h, 100%) * var(--rt-w, 3) / var(--rt-h, 2)));
+  aspect-ratio: var(--rt-w, 3) / var(--rt-h, 2);
   padding: 0;
   border: 0;
   background: transparent;
@@ -158,6 +164,7 @@
   max-width: none;
   max-height: none;
   object-fit: contain;
+  object-position: center;
   pointer-events: none;
 }
 
@@ -166,9 +173,9 @@
 }
 
 .theme-roadtrip .rt-map {
-  grid-area: 2 / 1;
-  justify-self: end;
-  align-self: end;
+  position: absolute;
+  right: max(0.85rem, env(safe-area-inset-right, 0px));
+  bottom: 0.85rem;
   width: var(--rt-map);
   height: var(--rt-map);
   aspect-ratio: 1 / 1;
@@ -176,26 +183,25 @@
   min-height: var(--rt-map);
   max-width: var(--rt-map);
   max-height: var(--rt-map);
-  margin: 0 1.15rem 1.15rem 0;
+  display: grid;
+  grid-template: minmax(0, 1fr) / minmax(0, 1fr);
   border: 0;
   box-shadow:
     0 0 0 1px color-mix(in srgb, var(--g-ink) 14%, transparent),
     0 8px 24px color-mix(in srgb, var(--g-ink) 12%, transparent);
   overflow: hidden;
-  position: relative;
   z-index: 5;
   background: #d8d5ce;
+  pointer-events: auto;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
-.theme-roadtrip .rt-map .rt-map-zoom {
-  right: 0.35rem;
-  top: 0.35rem;
-}
-
-.theme-roadtrip .rt-map .rt-map-zoom button {
-  width: 1.35rem;
-  height: 1.35rem;
-  font-size: 0.85rem;
+.theme-roadtrip .rt-map > .rt-map-canvas {
+  grid-area: 1 / 1;
+  min-width: 0;
+  min-height: 0;
 }
 
 .theme-roadtrip .rt-map .rt-map-copy {
@@ -225,6 +231,11 @@
 
 .rt-map-tile {
   position: absolute;
+  display: block;
+  width: 256px;
+  height: 256px;
+  max-width: none;
+  max-height: none;
   user-select: none;
   pointer-events: none;
 }
@@ -281,10 +292,13 @@
   position: absolute;
   right: 0.55rem;
   top: 0.55rem;
+  z-index: 3;
   display: flex;
   flex-direction: column;
   border: 1px solid var(--g-line, rgba(28, 27, 25, 0.12));
   background: var(--g-bg, #f7f5f1);
+  pointer-events: auto;
+  touch-action: manipulation;
 }
 
 .rt-map-zoom button {
@@ -296,6 +310,7 @@
   font-size: 1rem;
   line-height: 1;
   cursor: pointer;
+  touch-action: manipulation;
 }
 
 .rt-map-zoom button + button {
@@ -452,23 +467,62 @@
   .theme-gallery-v1.theme-roadtrip,
   .theme-roadtrip.has-map,
   .theme-gallery-v1.theme-roadtrip.has-map {
-    --rt-map: min(39vmin, 13.875rem);
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: auto minmax(0, 1fr) auto;
+    --rt-map-inset-left: max(0.95rem, env(safe-area-inset-left, 0px));
+    --rt-map-inset-right: max(0.95rem, env(safe-area-inset-right, 0px));
+    --rt-map-inset-y: 0.65rem;
+  }
+
+  .theme-roadtrip.has-map .rt-stream-wrap {
+    /* 16:9-Strip unter dem Bildstrom, Breite wie Kopf-/Meta-Zeile */
+    padding-bottom: calc(
+      (100% - var(--rt-map-inset-left) - var(--rt-map-inset-right)) * 9 / 16 + var(--rt-map-inset-y) +
+        0.2rem
+    );
   }
 
   .theme-roadtrip .rt-map {
-    margin: 0 0.7rem 0.7rem 0;
+    left: var(--rt-map-inset-left);
+    right: var(--rt-map-inset-right);
+    bottom: var(--rt-map-inset-y);
+    width: auto;
+    height: auto;
+    aspect-ratio: 16 / 9;
+    min-width: 0;
+    max-width: none;
+    min-height: 0;
+    max-height: none;
   }
 
-  .theme-roadtrip .rt-head,
+  .theme-roadtrip .rt-map .rt-map-zoom {
+    right: 0.45rem;
+    top: 0.45rem;
+  }
+
+  .theme-roadtrip .rt-map .rt-map-zoom button {
+    width: 2.75rem;
+    height: 2.75rem;
+    font-size: 1.35rem;
+  }
+
+  .theme-roadtrip .rt-map .rt-map-copy {
+    font-size: 0.58rem;
+    left: 0.35rem;
+    bottom: 0.3rem;
+    padding: 0.1rem 0.28rem;
+  }
+
+  .theme-roadtrip .rt-head {
+    padding: 0.65rem max(0.95rem, env(safe-area-inset-left, 0px)) 0.65rem
+      max(0.95rem, env(safe-area-inset-right, 0px));
+  }
+
   .theme-roadtrip .rt-meta {
-    padding-left: 0.95rem;
-    padding-right: 0.95rem;
+    padding-left: max(0.95rem, env(safe-area-inset-left, 0px));
+    padding-right: max(0.95rem, env(safe-area-inset-right, 0px));
   }
 
   .theme-roadtrip .rt-card {
-    max-width: 94vw;
+    width: min(94vw, calc(var(--rt-stage-h, 100%) * var(--rt-w, 3) / var(--rt-h, 2)));
   }
 
   .theme-roadtrip .rt-nav-btn {

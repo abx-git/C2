@@ -24,6 +24,56 @@ body {
   background: var(--edit-bg);
   color: var(--edit-ink);
   @apply antialiased;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  padding-left: env(safe-area-inset-left, 0px);
+  box-sizing: border-box;
+}
+
+.edit-chrome-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  row-gap: 0.45rem;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--edit-line);
+  background: var(--edit-panel);
+  position: relative;
+  z-index: 20;
+}
+
+.edit-chrome-nav {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 0.15rem;
+  min-width: 0;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.edit-chrome-actions {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.4rem;
+  margin-left: auto;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 640px) {
+  .edit-chrome-actions .edit-btn-desktop {
+    display: none;
+  }
+
+  .edit-chrome-header {
+    padding-left: max(0.75rem, env(safe-area-inset-left, 0px));
+    padding-right: max(0.75rem, env(safe-area-inset-right, 0px));
+  }
 }
 
 .edit-field {
@@ -70,6 +120,34 @@ body {
   background: var(--edit-ink);
   color: #f7f5f1;
   border-color: var(--edit-ink);
+}
+
+.edit-welcome-steps {
+  list-style: none;
+  counter-reset: welcome-step;
+  padding: 0;
+  margin: 0;
+}
+
+.edit-welcome-steps li {
+  counter-increment: welcome-step;
+  padding-left: 1.75rem;
+  position: relative;
+}
+
+.edit-welcome-steps li::before {
+  content: counter(welcome-step);
+  position: absolute;
+  left: 0;
+  top: 0.05rem;
+  width: 1.25rem;
+  height: 1.25rem;
+  border-radius: 999px;
+  border: 1px solid var(--edit-line);
+  font-size: 0.7rem;
+  line-height: 1.25rem;
+  text-align: center;
+  color: var(--edit-muted);
 }
 
 .edit-tab {
@@ -174,6 +252,53 @@ body {
   font-size: 0.7rem;
   line-height: 1.4;
   color: var(--edit-muted);
+}
+
+.edit-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgba(20, 18, 16, 0.45);
+}
+
+.edit-modal {
+  width: min(24rem, 100%);
+  max-height: min(90vh, 40rem);
+  overflow: auto;
+  padding: 1rem 1.1rem 1.1rem;
+  border-radius: 12px;
+  border: 1px solid var(--edit-line);
+  background: var(--edit-control);
+  box-shadow: 0 16px 40px rgba(28, 27, 25, 0.2);
+}
+
+.edit-modal h2 {
+  margin: 0 0 0.35rem;
+  font-size: 1.05rem;
+}
+
+.edit-modal-field {
+  display: grid;
+  gap: 0.25rem;
+  margin-top: 0.65rem;
+  font-size: 0.75rem;
+  color: var(--edit-muted);
+}
+
+.edit-modal-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.edit-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 1rem;
 }
 
 .edit-geo-map {

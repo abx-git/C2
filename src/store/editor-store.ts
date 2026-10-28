@@ -91,7 +91,7 @@ type EditorState = {
   needsGesture: boolean;
 
   restoreWorkspace: () => Promise<void>;
-  connectWorkspace: () => Promise<void>;
+  connectWorkspace: (opts?: { intent?: "new" | "open" }) => Promise<void>;
   reauthorizeWorkspace: () => Promise<void>;
   disconnect: () => void;
   importFiles: (files: File[], beforeId?: string | null) => Promise<void>;
@@ -431,7 +431,11 @@ async function presentWorkspace(
     needsGesture: false,
     dirty: false,
     error: null,
-    message: extra.message ?? (count ? `Vorschaubilder 0/${count}` : `Projekt „${handle.name}“ geöffnet.`),
+    message:
+      extra.message ??
+      (count
+        ? `Vorschaubilder 0/${count}`
+        : `Projekt „${handle.name}“ bereit. Als Nächstes: Tab „Bilder“ — Fotos importieren. Zum Veröffentlichen später „Deploy-Ordner“ im Projektmenü (oben rechts).`),
     thumbUrls: {},
     displayUrls: {},
     ...historyFlags(),
@@ -576,7 +580,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     }
   },
 
-  connectWorkspace: async () => {
+  connectWorkspace: async (opts) => {
     if (!supportsDirectoryPicker()) {
       const brave = await isBrave();
       set({
@@ -586,10 +590,20 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       });
       return;
     }
-    set({ message: "Ordner-Dialog sollte im Vordergrund liegen …", error: null });
+    const intent = opts?.intent ?? "open";
+    set({
+      message:
+        intent === "new"
+          ? "Leeren Ordner wählen oder anlegen — C2 richtet die Projektstruktur ein. Dialog im Vordergrund halten …"
+          : "Bestehenden Projektordner wählen (enthält data/ und originals/). Dialog im Vordergrund halten …",
+      error: null,
+    });
     let handle: FileSystemDirectoryHandle | null;
     try {
-      handle = await pickDirectory("readwrite");
+      handle = await pickDirectory("readwrite", {
+        id: intent === "new" ? "c2-new-project" : "c2-open-project",
+        startIn: intent === "new" ? "documents" : undefined,
+      });
     } catch (err) {
       set({
         message: null,
@@ -611,7 +625,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       return;
     }
     try {
-      await presentWorkspace(handle, set, get, { message: `Projekt „${handle.name}“ geöffnet.` });
+      await presentWorkspace(handle, set, get);
     } catch (err) {
       set({
         message: null,
